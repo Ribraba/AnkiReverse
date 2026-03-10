@@ -1,0 +1,26 @@
+services:
+  # API Python qui lit le SQLite et sert le PWA
+  # Le sync server tourne séparément via : ./scripts/start_sync_server.sh
+  api:
+    build: ./server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./.anki_data:/anki_data:ro  # lit les données du sync server local
+    environment:
+      - ANKI_DATA_PATH=/anki_data
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - VAPID_EMAIL=${VAPID_EMAIL}
+    restart: unless-stopped
+
+  # PWA Next.js
+  pwa:
+    build: ./pwa
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_VAPID_KEY=${VAPID_PUBLIC_KEY}
+    restart: unless-stopped
+
