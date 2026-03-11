@@ -207,10 +207,10 @@ def run_sync(show_result=True):
         threading.Thread(target=mark_synced_task, args=(synced_ids,), daemon=True).start()
 
         if show_result:
-            tooltip(
-                f"AnkiReverse sync OK\n↓ {applied} révisions importées\n↑ {pushed} cartes exportées",
-                period=4000
-            )
+            msg = f"AnkiReverse ✓\n↑ {pushed} cartes exportées"
+            if applied:
+                msg += f"\n↓ {applied} révisions iPhone importées"
+            tooltip(msg, period=3000)
 
     def thread_target():
         background()
@@ -232,7 +232,7 @@ def on_profile_open():
         mw.form.menuTools.addAction(action)
         _menu_added = True
 
-    run_sync(show_result=False)
+    run_sync(show_result=True)
 
 
 def on_profile_close():
