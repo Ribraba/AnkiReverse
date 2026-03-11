@@ -1,10 +1,11 @@
 """
 AnkiReverse Sync — Add-on Anki 2.1.26
-Lance sync_anki_turso.py via subprocess (Python my_env) pour éviter
-les conflits avec le Python gelé d'Anki.
+Lance sync_anki_turso.py via subprocess pour éviter les conflits
+avec le Python gelé d'Anki.
 """
 import threading
 import subprocess
+import sys
 from pathlib import Path
 
 from aqt import mw, gui_hooks
@@ -16,34 +17,62 @@ from aqt.qt import QAction
 PROJECT = Path.home() / "Documents/Projets/CODE/AnkiReverse"
 SCRIPT  = PROJECT / "scripts/sync_anki_turso.py"
 
-# Python du virtualenv my_env où libsql_experimental est installé
-PYTHON  = PROJECT / "my_env/bin/python3"
 
-# Fallback sur python3 système si my_env absent
-if not PYTHON.exists():
-    PYTHON = Path("/usr/bin/python3")
+def find_python() -> Path:
+    """Cherche un Python avec libsql_experimental installé."""
+    candidates = [
+        PROJECT / "my_env/bin/python3",
+        Path.home() / ".pyenv/shims/python3",
+        Path("/usr/local/bin/python3"),
+        Path("/opt/homebrew/bin/python3"),
+        Path("/usr/bin/python3"),
+    ]
+    # Tester chaque candidat
+    for p in candidates:
+        if not p.exists():
+            continue
+        try:
+            r = subprocess.run(
+                [str(p), "-c", "import libsql_experimental"],
+                capture_output=True, timeout=5
+            )
+            if r.returncode == 0:
+                return p
+        except Exception:
+            continue
+    return None
+
+
+PYTHON = find_python()
 
 
 # ── Sync via subprocess ────────────────────────────────────────────────────────
 
 def run_sync_subprocess():
-    """Lance le script de sync et retourne (success, stdout, stderr)."""
+    """Lance le script de sync. Retourne (success, stdout, stderr)."""
     if not SCRIPT.exists():
-        return False, "", f"Script introuvable : {SCRIPT}"
-    if not PYTHON.exists():
-        return False, "", f"Python introuvable : {PYTHON}"
+        return False, "", f"Script introuvable :\n{SCRIPT}"
+
+    if PYTHON is None:
+        return False, "", (
+            "Impossible de trouver un Python avec libsql_experimental.\n"
+            "Lance dans ton terminal :\n"
+            "  pip install libsql-experimental"
+        )
 
     try:
         result = subprocess.run(
             [str(PYTHON), str(SCRIPT)],
             capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(PROJECT)
+            timeout=60,
+            cwd=str(PROJECT),
+            env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"},
         )
-        return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
+        stdout = result.stdout.decode("utf-8", errors="replace").strip()
+        stderr = result.stderr.decode("utf-8", errors="replace").strip()
+        return result.returncode == 0, stdout, stderr
     except subprocess.TimeoutExpired:
-        return False, "", "Timeout — vérifier la connexion réseau"
+        return False, "", "Timeout (60s) — vérifier la connexion réseau"
     except Exception as e:
         return False, "", str(e)
 
@@ -58,23 +87,19 @@ def run_sync(show_result=True):
 
     def check_done():
         if result_container[0] is None:
-            # Pas encore terminé, on repoll dans 500ms (sur le thread principal)
             mw.progress.timer(500, check_done, False)
             return
-
-        success, stdout, stderr = result_container[0]
 
         if not show_result:
             return
 
+        success, stdout, stderr = result_container[0]
         if success:
-            msg = "AnkiReverse — Sync terminée\n\n" + (stdout or "Aucun changement.")
-            showInfo(msg, title="AnkiReverse")
+            showInfo(stdout or "Sync terminée.", title="AnkiReverse ✓")
         else:
-            showInfo(f"AnkiReverse — Erreur :\n\n{stderr}", title="AnkiReverse")
+            showInfo(stderr or "Erreur inconnue.", title="AnkiReverse — Erreur")
 
     threading.Thread(target=background, daemon=True).start()
-    # Timer créé sur le thread principal → safe
     mw.progress.timer(500, check_done, False)
 
 
@@ -94,7 +119,6 @@ def on_profile_open():
 
 
 def on_profile_close():
-    # Sync synchrone bloquante à la fermeture
     run_sync_subprocess()
 
 
