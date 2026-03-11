@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 
 from aqt import mw, gui_hooks
-from aqt.utils import tooltip
+from aqt.utils import showInfo
 from aqt.qt import QAction
 
 ENV_FILE = Path.home() / "Documents/Projets/CODE/AnkiReverse/.env"
@@ -179,10 +179,10 @@ def mark_synced_task(synced_ids: list):
 # ── Orchestration ─────────────────────────────────────────────────────────────
 
 def show_sync_result(pushed: int, applied: int):
-    msg = f"AnkiReverse ✓<br>↑ {pushed} cartes exportées"
+    msg = f"AnkiReverse — Sync terminée\n\n↑ {pushed} cartes exportées"
     if applied:
-        msg += f"<br>↓ {applied} révisions iPhone importées"
-    tooltip(msg, period=5000)
+        msg += f"\n↓ {applied} révisions iPhone importées"
+    showInfo(msg, title="AnkiReverse")
 
 
 def run_sync(show_result=True):
@@ -201,7 +201,7 @@ def run_sync(show_result=True):
         reviews, pushed, synced_ids, error = result_container[0]
 
         if error:
-            tooltip(f"AnkiReverse erreur : {error}")
+            showInfo(f"AnkiReverse erreur :\n{error}", title="AnkiReverse")
             return
 
         applied = apply_reviews_to_col(reviews)
