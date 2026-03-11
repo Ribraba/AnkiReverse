@@ -215,4 +215,4 @@ def add_menu_action():
     action.triggered.connect(lambda: sync_in_background(show_result=True))
     mw.form.menuTools.addAction(action)
 
-gui_hooks.main_window_did_init.append(add_menu_action)
+gui_hooks.profile_did_open.append(add_menu_action)
