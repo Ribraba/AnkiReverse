@@ -9,7 +9,7 @@ from pathlib import Path
 
 from aqt import mw, gui_hooks
 from aqt.utils import tooltip
-from aqt.qt import QAction, QDialog, QLabel, QVBoxLayout, Qt, QTimer
+from aqt.qt import QAction
 
 ENV_FILE = Path.home() / "Documents/Projets/CODE/AnkiReverse/.env"
 
@@ -178,54 +178,11 @@ def mark_synced_task(synced_ids: list):
 
 # ── Orchestration ─────────────────────────────────────────────────────────────
 
-_sync_popup = None
-
-def show_sync_popup(pushed: int, applied: int):
-    """Affiche une popup style AnkiWeb qui se ferme automatiquement après 3s."""
-    global _sync_popup, _sync_timer
-
-    # Ferme l'éventuelle popup précédente
-    if _sync_popup is not None:
-        try:
-            _sync_popup.close()
-        except Exception:
-            pass
-
-    dlg = QDialog(mw)
-    dlg.setWindowTitle("AnkiReverse")
-    dlg.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-    dlg.setStyleSheet("background: #1e1e1e; border: 1px solid #333; border-radius: 8px;")
-
-    layout = QVBoxLayout()
-    layout.setContentsMargins(20, 14, 20, 14)
-    layout.setSpacing(4)
-
-    title = QLabel("✓  Sync AnkiReverse terminée")
-    title.setStyleSheet("color: #fff; font-weight: bold; font-size: 13px;")
-
-    line2 = f"↑  {pushed} cartes exportées"
+def show_sync_result(pushed: int, applied: int):
+    msg = f"AnkiReverse ✓<br>↑ {pushed} cartes exportées"
     if applied:
-        line2 += f"\n↓  {applied} révisions iPhone importées"
-    details = QLabel(line2)
-    details.setStyleSheet("color: #aaa; font-size: 12px;")
-
-    layout.addWidget(title)
-    layout.addWidget(details)
-    dlg.setLayout(layout)
-
-    dlg.adjustSize()
-    geo = mw.geometry()
-    dlg.move(geo.x() + geo.width() - dlg.width() - 20,
-             geo.y() + geo.height() - dlg.height() - 50)
-    dlg.show()
-
-    _sync_popup = dlg
-
-    # Timer stocké pour éviter le garbage collection
-    _sync_timer = QTimer()
-    _sync_timer.setSingleShot(True)
-    _sync_timer.timeout.connect(dlg.close)
-    _sync_timer.start(3000)
+        msg += f"<br>↓ {applied} révisions iPhone importées"
+    tooltip(msg, period=5000)
 
 
 def run_sync(show_result=True):
@@ -251,7 +208,7 @@ def run_sync(show_result=True):
         threading.Thread(target=mark_synced_task, args=(synced_ids,), daemon=True).start()
 
         if show_result:
-            show_sync_popup(pushed, applied)
+            show_sync_result(pushed, applied)
 
     def thread_target():
         background()
