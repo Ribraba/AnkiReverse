@@ -87,9 +87,18 @@ def arg(v):
 
 # ── Lecture Anki ──────────────────────────────────────────────────────────────
 
+def _scalar(sql: str, default=None):
+    """db.scalar() renvoie la première ligne (liste) en Anki 2.1.26 — on extrait [0][0]."""
+    rows = mw.col.db.all(sql)
+    if not rows:
+        return default
+    val = rows[0][0] if isinstance(rows[0], (list, tuple)) else rows[0]
+    return val
+
+
 def get_today_offset() -> int:
-    crt      = int(mw.col.db.scalar("SELECT crt FROM col WHERE id=1") or 0)
-    rollover = int(mw.col.db.scalar("SELECT val FROM config WHERE key='rollover'") or 4)
+    crt      = int(_scalar("SELECT crt FROM col WHERE id=1") or 0)
+    rollover = int(_scalar("SELECT val FROM config WHERE key='rollover'") or 4)
     return int((time.time() - rollover * 3600 - (crt - rollover * 3600)) // 86400)
 
 
@@ -112,8 +121,8 @@ def collect_due_cards(ahead_days: int = 7) -> list:
            OR (c.queue = 2 AND c.due <= ?)
     """, int(today + ahead_days))
 
-    models = json.loads(mw.col.db.scalar("SELECT models FROM col") or "{}")
-    decks  = json.loads(mw.col.db.scalar("SELECT decks FROM col")  or "{}")
+    models = json.loads(_scalar("SELECT models FROM col") or "{}")
+    decks  = json.loads(_scalar("SELECT decks FROM col")  or "{}")
 
     batch = []
     for row in rows:
@@ -227,7 +236,7 @@ def turso_sync_task(cards: list, env: dict, progress_cb=None):
             {"sql": "UPDATE review_log SET synced_to_anki=1 WHERE card_id=? AND reviewed_at=?",
              "args": [arg(cid), arg(rat)]} for cid, _, rat in reviews])
 
-    # 4. Sauvegarder today_offset dans Turso
+    # 4. Sauvegarder today_offset dans Turso (pour la PWA)
     today = get_today_offset()
     turso_query(base, token, [{
         "sql": "INSERT OR REPLACE INTO sync_meta(key, value) VALUES('today_offset', ?)",
