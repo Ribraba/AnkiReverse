@@ -165,7 +165,8 @@ def pull_reviews_from_turso(anki: sqlite3.Connection):
 # ── Main ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print(f"Connexion à {ANKI_DB}")
-    anki = sqlite3.connect(ANKI_DB)
+    anki = sqlite3.connect(ANKI_DB, timeout=30)
+    anki.execute("PRAGMA read_uncommitted=true")
     anki.row_factory = sqlite3.Row
 
     pull_reviews_from_turso(anki)

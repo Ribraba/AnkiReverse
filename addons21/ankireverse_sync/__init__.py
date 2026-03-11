@@ -115,7 +115,8 @@ def on_profile_open():
         mw.form.menuTools.addAction(action)
         _menu_added = True
 
-    run_sync(show_result=True)
+    # Délai de 3s pour laisser Anki finir d'initialiser la collection
+    mw.progress.timer(3000, lambda: run_sync(show_result=True), False)
 
 
 def on_profile_close():
