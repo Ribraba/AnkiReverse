@@ -471,10 +471,11 @@ def on_profile_close():
         return
     try:
         cards = collect_due_cards(ahead_days=7)
-        turso_sync_task(cards, env)
+        _, pushed = turso_sync_task(cards, env)
         save_last_sync()
-    except Exception:
-        pass
+        log(f"on_profile_close: {pushed} cartes synchronisées")
+    except Exception as e:
+        log(f"on_profile_close ERREUR: {e}")
 
 
 gui_hooks.profile_did_open.append(on_profile_open)
