@@ -11,25 +11,26 @@ Conçu pour remplacer AnkiMobile sans payer 30€ — fonctionne dans Safari com
 Anki Desktop (Mac)
       │
       ▼
-scripts/sync_anki_turso.py   ← script Python à lancer sur Mac
+Add-on AnkiReverse Sync        ← s'exécute automatiquement à l'ouverture/fermeture d'Anki
+(ou scripts/sync_anki_turso.py en ligne de commande)
       │
       ▼
-   Turso (cloud SQLite)       ← base de données en ligne, tier gratuit
+   Turso (cloud SQLite)         ← base de données en ligne, tier gratuit
       │
       ▼
-  Next.js PWA (Vercel)        ← interface de révision
+  Next.js PWA (Vercel)          ← interface de révision
       │
       ▼
-   iPhone / Safari            ← installable sur l'écran d'accueil
+   iPhone / Safari              ← installable sur l'écran d'accueil
 ```
 
 ### Comment ça marche ?
 
 1. **Anki Desktop** stocke toutes tes cartes dans un fichier SQLite local (`collection.anki2`)
-2. Le **script Python** lit ce fichier directement et pousse les cartes dues vers **Turso** (base cloud)
+2. **L'add-on Anki** (ou le script Python) lit ce fichier et pousse les cartes dues vers **Turso** (base cloud)
 3. La **PWA Next.js** déployée sur Vercel interroge Turso via API pour afficher les cartes
 4. Quand tu révises sur iPhone, la note (1-4) est enregistrée dans Turso
-5. Au prochain lancement du script sur Mac, les révisions iPhone sont récupérées depuis Turso et appliquées dans Anki Desktop (algorithme SM-2)
+5. Au prochain démarrage d'Anki Desktop, l'add-on récupère les révisions iPhone et les applique dans Anki (algorithme SM-2)
 
 ---
 
@@ -61,18 +62,54 @@ scripts/sync_anki_turso.py   ← script Python à lancer sur Mac
 
 ```
 AnkiReverse/
-├── pwa/                          → Application Next.js (Vercel)
-│   ├── src/app/                  → Pages (/, /review, /decks, /login)
-│   ├── src/app/api/              → Routes API (counts, cards, review, decks)
-│   ├── src/lib/                  → turso.ts, auth.ts, api.ts, push.ts
-│   └── public/                   → manifest.json, icônes, fonts Neris
+├── .env.example                      → Template des variables d'environnement (Mac)
+├── docker-compose.yml                → Ancien setup Docker (non utilisé en prod)
+│
+├── addons21/
+│   └── ankireverse_sync/
+│       ├── __init__.py               → Add-on Anki : sync automatique à l'ouverture/fermeture
+│       └── meta.json                 → Métadonnées de l'add-on
+│
+├── pwa/                              → Application Next.js (déployée sur Vercel)
+│   ├── public/
+│   │   ├── manifest.json             → Manifest PWA
+│   │   ├── icon-192.png              → Icône PWA (home screen iPhone)
+│   │   ├── icon-512.png              → Icône PWA (splash screen)
+│   │   ├── sw-push.js                → Service worker pour les notifications push
+│   │   └── fonts/                    → Police Neris (Thin, Light, SemiBold, Black)
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── page.tsx              → Dashboard (cartes du jour, stats)
+│   │   │   ├── review/page.tsx       → Interface de révision des cartes
+│   │   │   ├── decks/page.tsx        → Sélection des decks actifs
+│   │   │   ├── login/page.tsx        → Page de connexion GitHub OAuth
+│   │   │   ├── layout.tsx            → Layout global (font, metadata PWA)
+│   │   │   └── api/
+│   │   │       ├── counts/route.ts   → GET /api/counts — nb de cartes dues
+│   │   │       ├── cards/route.ts    → GET /api/cards — cartes à réviser
+│   │   │       ├── review/route.ts   → POST /api/review — soumettre une note
+│   │   │       ├── decks/route.ts    → GET /api/decks — liste des decks
+│   │   │       ├── push/             → Routes notifications push (subscribe/notify)
+│   │   │       └── auth/             → NextAuth (GitHub OAuth)
+│   │   ├── components/
+│   │   │   └── providers.tsx         → SessionProvider (NextAuth)
+│   │   ├── lib/
+│   │   │   ├── turso.ts              → Client Turso (libSQL cloud)
+│   │   │   ├── auth.ts               → Config NextAuth + restriction email
+│   │   │   ├── api.ts                → Fonctions fetch côté client
+│   │   │   └── push.ts               → Abonnement Web Push (VAPID)
+│   │   └── proxy.ts                  → Protection des routes (remplace middleware Next.js 16)
+│   └── .env.local.example            → Template des variables d'env pour la PWA
 │
 ├── scripts/
-│   ├── sync_anki_turso.py        → Sync bidirectionnel Anki ↔ Turso (à lancer sur Mac)
-│   ├── init_turso.py             → Création des tables Turso (une seule fois)
-│   └── generate_vapid.py         → Génère les clés VAPID pour les notifications
+│   ├── sync_anki_turso.py            → Sync bidirectionnel Anki ↔ Turso (CLI)
+│   ├── init_turso.py                 → Création des tables Turso (une seule fois)
+│   └── generate_vapid.py             → Génère les clés VAPID pour les notifications
 │
-└── server/                       → Ancienne API FastAPI (non utilisée en prod)
+└── server/                           → Ancienne API FastAPI (non utilisée en prod)
+    ├── main.py
+    ├── api/anki_db.py
+    └── requirements.txt
 ```
 
 ---
