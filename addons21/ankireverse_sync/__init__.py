@@ -13,7 +13,7 @@ from pathlib import Path
 
 from aqt import mw, gui_hooks
 from aqt.qt import (
-    QAction, QDialog, QVBoxLayout, QScrollArea, QWidget,
+    QAction, QDialog, QVBoxLayout, QHBoxLayout, QScrollArea, QWidget,
     QLabel, QProgressBar, QPushButton, QCheckBox, Qt
 )
 
@@ -409,6 +409,16 @@ class DeckFilterDialog(QDialog):
 
         layout.addWidget(QLabel("Décochez les decks à exclure de la synchronisation :"))
 
+        # Boutons tout sélectionner / tout déselectionner
+        sel_row = QHBoxLayout()
+        btn_all = QPushButton("Tout sélectionner")
+        btn_none = QPushButton("Tout déselectionner")
+        btn_all.clicked.connect(lambda: self._set_all(True))
+        btn_none.clicked.connect(lambda: self._set_all(False))
+        sel_row.addWidget(btn_all)
+        sel_row.addWidget(btn_none)
+        layout.addLayout(sel_row)
+
         # Zone scrollable
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -437,6 +447,10 @@ class DeckFilterDialog(QDialog):
         btn_row.addWidget(btn_save)
         btn_row.addWidget(btn_cancel)
         layout.addLayout(btn_row)
+
+    def _set_all(self, checked: bool):
+        for cb in self._checkboxes.values():
+            cb.setChecked(checked)
 
     def _save(self):
         excluded = {name for name, cb in self._checkboxes.items() if not cb.isChecked()}
