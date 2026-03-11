@@ -19,6 +19,16 @@ from aqt.qt import (
 
 ENV_FILE   = Path.home() / "Documents/Projets/CODE/AnkiReverse/.env"
 STAMP_FILE = Path.home() / "Library/Application Support/Anki2/addons21/ankireverse_sync/last_sync.txt"
+LOG_FILE   = Path.home() / "Library/Application Support/Anki2/addons21/ankireverse_sync/sync.log"
+
+def log(msg: str):
+    ts = time.strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}\n"
+    try:
+        with open(str(LOG_FILE), "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -78,13 +88,14 @@ def arg(v):
 # ── Lecture Anki ──────────────────────────────────────────────────────────────
 
 def collect_changed_cards(since: int) -> list:
-    """Ne récupère que les cartes modifiées depuis `since` (timestamp UNIX)."""
+    """Cartes actives (non suspendues) modifiées depuis `since`."""
     rows = mw.col.db.all("""
         SELECT c.id, c.nid, c.did, c.ord, c.queue, c.type,
                c.due, c.ivl, c.factor, c.reps, c.lapses, c.mod,
                n.flds, n.tags, n.mid
         FROM cards c JOIN notes n ON c.nid = n.id
-        WHERE c.mod > ? OR n.mod > ?
+        WHERE c.queue >= 0
+          AND (c.mod > ? OR n.mod > ?)
     """, since, since)
 
     models = json.loads(mw.col.db.scalar("SELECT models FROM col") or "{}")
@@ -154,15 +165,19 @@ def apply_reviews(reviews: list) -> int:
 def turso_sync_task(cards: list, env: dict):
     base  = turso_base_url(env)
     token = env.get("TURSO_TOKEN", "")
+    log(f"turso_sync_task: base_url={base}")
 
     # Pull reviews
+    log("turso_sync_task: pull reviews...")
     res = turso_query(base, token, [{"sql": "SELECT card_id, rating, reviewed_at FROM review_log WHERE synced_to_anki=0"}])
     reviews = []
     if res:
         for row in res[0].get("rows", []):
             reviews.append((int(row[0]["value"]), int(row[1]["value"]), int(row[2]["value"])))
+    log(f"turso_sync_task: {len(reviews)} reviews trouvées")
 
     # Push cards modifiées (batch 100)
+    log(f"turso_sync_task: push {len(cards)} cartes...")
     stmts = []
     for c in cards:
         stmts.append({"sql": """INSERT OR REPLACE INTO cards
@@ -171,7 +186,7 @@ def turso_sync_task(cards: list, env: dict):
             "args": [arg(v) for v in (c["id"],c["nid"],c["deck"],c["model"],c["fields"],
                 c["q"],c["a"],c["css"],c["tags"],c["queue"],c["type"],c["due"],
                 c["ivl"],c["factor"],c["reps"],c["lapses"],c["mod"])]})
-        if len(stmts) == 100:
+        if len(stmts) == 500:
             turso_query(base, token, stmts); stmts = []
     if stmts:
         turso_query(base, token, stmts)
@@ -247,8 +262,11 @@ def run_sync(show_result=True):
 
     try:
         since = get_last_sync()
+        log(f"Lecture cartes modifiées depuis {since}")
         cards = collect_changed_cards(since)
+        log(f"{len(cards)} cartes à envoyer")
     except Exception as e:
+        log(f"ERREUR collect_changed_cards: {e}")
         if show_result:
             dlg = SyncDialog()
             dlg.set_error(str(e))
@@ -264,15 +282,20 @@ def run_sync(show_result=True):
 
     def background():
         try:
+            log("background: début turso_sync_task")
             result_container[0] = turso_sync_task(cards, env)
+            log(f"background: terminé — {result_container[0][1]} cartes, {len(result_container[0][0])} reviews")
         except Exception as e:
+            log(f"background ERREUR: {e}")
             error_container[0] = str(e)
 
     def check_done():
         if result_container[0] is None and error_container[0] is None:
+            log("check_done: pas encore terminé, repoll dans 500ms")
             mw.progress.timer(500, check_done, False)
             return
 
+        log("check_done: résultat reçu")
         if error_container[0]:
             if dlg:
                 dlg.set_error(error_container[0])
@@ -281,7 +304,9 @@ def run_sync(show_result=True):
         reviews, pushed = result_container[0]
         try:
             applied = apply_reviews(reviews)
-        except Exception:
+            log(f"apply_reviews: {applied} révisions appliquées")
+        except Exception as e:
+            log(f"apply_reviews ERREUR: {e}")
             applied = 0
 
         save_last_sync()
