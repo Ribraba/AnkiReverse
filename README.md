@@ -155,37 +155,47 @@ VAPID_EMAIL=mailto:ton@email.com
 
 ---
 
-### Étape 5 — Sync Anki Desktop (Mac)
+### Étape 5 — Add-on Anki Desktop (sync automatique)
+
+L'add-on s'installe une seule fois et gère le sync automatiquement à chaque ouverture/fermeture d'Anki. Plus besoin de lancer le script manuellement.
+
+**5a. Installer la dépendance Python**
 
 ```bash
-# Installer les dépendances Python
-pip install libsql-experimental python-dotenv
+pip install libsql-experimental
+```
 
-# Créer un .env à la racine avec tes identifiants Turso
+**5b. Créer le fichier `.env` à la racine du projet**
+
+```bash
 cp .env.example .env
-# Remplis TURSO_URL et TURSO_TOKEN dans .env
+```
 
-# Lancer le sync (à faire avant/après chaque session de révision)
+Remplis `TURSO_URL` et `TURSO_TOKEN` dans ce fichier `.env`.
+
+**5c. Copier le dossier de l'add-on dans Anki**
+
+```bash
+cp -r addons21/ankireverse_sync \
+  ~/Library/Application\ Support/Anki2/addons21/
+```
+
+> Le dossier `addons21/ankireverse_sync/` se trouve à la racine du repo.
+
+**5d. Redémarrer Anki Desktop**
+
+C'est tout. Dès que tu ouvres Anki, le sync se lance en arrière-plan.
+Tu peux aussi le déclencher manuellement via **Outils → AnkiReverse — Sync maintenant**.
+
+**Ce que fait l'add-on :**
+- **À l'ouverture** d'Anki → sync silencieux (importe les révisions iPhone, exporte les cartes du jour)
+- **À la fermeture** d'Anki → sync final pour ne rien perdre
+- **Menu Outils** → sync manuel avec notification du résultat
+
+**Si tu préfères le script en ligne de commande (sans add-on) :**
+```bash
 python scripts/sync_anki_turso.py
 ```
-
-Le script trouve automatiquement ta collection Anki dans `~/Library/Application Support/Anki2/`.
-
-**Workflow recommandé :**
-- Lance `sync_anki_turso.py` **avant** de réviser sur iPhone → les cartes du jour sont chargées dans Turso
-- Révise sur iPhone / Vercel
-- Lance `sync_anki_turso.py` **après** → les notes sont appliquées dans Anki Desktop
-
-**Automatiser avec cron (optionnel) :**
-```bash
-# Sync automatique à 8h chaque matin
-crontab -e
-0 8 * * * /usr/bin/python3 /chemin/vers/scripts/sync_anki_turso.py
-```
-
-**À faire sur Anki Desktop :**
-- Rien de spécial — continue à utiliser Anki normalement (add-ons, Beautiful Anki, etc.)
-- Ne pas lancer de sync Anki natif vers AnkiWeb pendant une session iPhone (risque de conflit) — utilise uniquement le script Python pour la synchro
 
 ---
 
