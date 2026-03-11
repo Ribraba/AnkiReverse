@@ -57,6 +57,7 @@ export async function GET(req: Request) {
     type: Number(row.type),
     queue: Number(row.queue),
     interval: Number(row.interval),
+    factor: Number(row.factor),
     due: Number(row.due),
     reps: Number(row.reps),
     lapses: Number(row.lapses),

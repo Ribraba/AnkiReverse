@@ -18,6 +18,7 @@ export interface AnkiCard {
   type: number;
   queue: number;
   interval: number;
+  factor: number;
   due: number;
   reps: number;
   lapses: number;
