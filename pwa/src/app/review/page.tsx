@@ -6,17 +6,22 @@ import { ArrowLeft, PartyPopper, CheckCircle } from "lucide-react";
 import { getDueCards, submitReview, type AnkiCard } from "@/lib/api";
 import { getActiveDecks } from "@/app/decks/page";
 
-function renderTemplate(template: string, fields: Record<string, string>): string {
-  return template.replace(/\{\{([^}]+)\}\}/g, (_, key) => fields[key.trim()] ?? "");
+function renderQuestion(template: string, fields: Record<string, string>): string {
+  return template
+    .replace(/\{\{([^}]+)\}\}/g, (_, key) => fields[key.trim()] ?? "")
+    .trim();
 }
 
 function renderAnswer(template: string, fields: Record<string, string>): string {
-  let html = template.replace(/\{\{([^}]+)\}\}/g, (_, key) => {
-    if (key.trim() === "FrontSide") return "";
-    return fields[key.trim()] ?? "";
-  });
-  html = html.replace(/<hr\s+id=["']?answer["']?\s*\/?>/gi, "");
-  return html.trim();
+  // Ne garder que ce qui est APRÈS <hr id=answer> — évite le double énoncé
+  const hrMatch = template.match(/<hr\s+id=["']?answer["']?\s*\/?>/i);
+  const backPart = hrMatch
+    ? template.slice((hrMatch.index ?? 0) + hrMatch[0].length)
+    : template.replace(/\{\{FrontSide\}\}/gi, "");
+
+  return backPart
+    .replace(/\{\{([^}]+)\}\}/g, (_, key) => fields[key.trim()] ?? "")
+    .trim();
 }
 
 function formatInterval(days: number): string {
@@ -64,7 +69,7 @@ export default function ReviewPage() {
   }
 
   if (loading) return <Screen><p className="text-zinc-400 text-sm">Chargement...</p></Screen>;
-  if (error) return <Screen><p className="text-red-400 text-sm">{error}</p></Screen>;
+  if (error)   return <Screen><p className="text-red-400 text-sm">{error}</p></Screen>;
   if (cards.length === 0) return (
     <Screen>
       <div className="text-center space-y-3">
@@ -88,17 +93,15 @@ export default function ReviewPage() {
     </Screen>
   );
 
-  const question = renderTemplate(card.question_template, card.fields);
-  const answer = renderAnswer(card.answer_template, card.fields);
+  const question = renderQuestion(card.question_template, card.fields);
+  const answer   = renderAnswer(card.answer_template, card.fields);
   const [t1, t2, t3, t4] = sm2Intervals(card.interval, card.factor);
-
-  // Affiche seulement la dernière partie du nom de deck (après le dernier ::)
   const deckShort = card.deck.split("::").pop() ?? card.deck;
 
   return (
-    <main className="min-h-screen bg-[#09090b] text-white flex flex-col">
+    <main className="h-screen bg-[#09090b] text-white flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="border-b border-white/5 px-4 py-3 flex items-center gap-3">
+      <header className="shrink-0 border-b border-white/5 px-4 py-3 flex items-center gap-3">
         <Link href="/" className="shrink-0 text-zinc-500 hover:text-white transition-colors">
           <ArrowLeft size={18} />
         </Link>
@@ -110,38 +113,38 @@ export default function ReviewPage() {
       </header>
 
       {/* Deck / tags */}
-      <div className="px-4 pt-3 pb-1 flex items-center gap-2 min-w-0">
-        <span className="text-xs text-zinc-500 bg-white/5 rounded-md px-2 py-0.5 truncate max-w-[60%]">
+      <div className="shrink-0 px-4 pt-2 pb-1 flex items-center gap-2 min-w-0">
+        <span className="text-xs text-zinc-500 bg-white/5 rounded-md px-2 py-0.5 truncate max-w-[65%]">
           {deckShort}
         </span>
         {card.tags.slice(0, 2).map((t) => (
-          <span key={t} className="text-xs text-zinc-600 bg-white/4 rounded-md px-2 py-0.5 truncate max-w-[30%]">{t}</span>
+          <span key={t} className="text-xs text-zinc-600 bg-white/4 rounded-md px-2 py-0.5 truncate max-w-[28%]">{t}</span>
         ))}
       </div>
 
-      {/* Carte */}
-      <div className="flex-1 flex flex-col px-4 py-4 gap-4 overflow-y-auto">
+      {/* Zone de contenu scrollable */}
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+        {card.css && <style dangerouslySetInnerHTML={{ __html: card.css }} />}
 
         {/* Question */}
-        <div className="rounded-2xl border border-white/8 bg-white/4 px-6 py-7 flex-1 flex items-center justify-center min-h-[160px]">
-          {card.css && <style dangerouslySetInnerHTML={{ __html: card.css }} />}
-          <div className="prose prose-invert prose-sm max-w-none text-center w-full"
+        <div className="rounded-3xl border border-white/8 bg-white/4 px-7 py-9">
+          <div className="prose prose-invert prose-base max-w-none text-center w-full"
             dangerouslySetInnerHTML={{ __html: question }} />
         </div>
 
-        {/* Réponse */}
-        {showAnswer && (
-          <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 px-6 py-7 flex-1 flex items-center justify-center min-h-[140px] animate-fade-in">
-            <div className="prose prose-invert prose-sm max-w-none text-center w-full"
+        {/* Réponse — uniquement ce qui est après <hr id=answer> */}
+        {showAnswer && answer && (
+          <div className="rounded-3xl border border-violet-500/20 bg-violet-500/5 px-7 py-9 animate-fade-in">
+            <div className="prose prose-invert prose-base max-w-none text-center w-full"
               dangerouslySetInnerHTML={{ __html: answer }} />
           </div>
         )}
       </div>
 
-      {/* Boutons */}
+      {/* Boutons — collés au bas, respecte la safe area iOS */}
       <div
-        className="px-5 pt-3 space-y-2"
-        style={{ paddingBottom: "max(28px, env(safe-area-inset-bottom, 28px))" }}
+        className="shrink-0 px-5 pt-3 space-y-2"
+        style={{ paddingBottom: "max(32px, env(safe-area-inset-bottom, 32px))" }}
       >
         {!showAnswer ? (
           <button onClick={() => setShowAnswer(true)}
@@ -150,10 +153,10 @@ export default function ReviewPage() {
           </button>
         ) : (
           <div className="grid grid-cols-4 gap-2">
-            <RatingBtn label="Raté"   hint={t1} color="bg-red-500/15 hover:bg-red-500/25 text-red-400 border-red-500/20"             onClick={() => next(1)} />
-            <RatingBtn label="Dur"    hint={t2} color="bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border-amber-500/20"     onClick={() => next(2)} />
+            <RatingBtn label="Raté"   hint={t1} color="bg-red-500/15 hover:bg-red-500/25 text-red-400 border-red-500/20"                 onClick={() => next(1)} />
+            <RatingBtn label="Dur"    hint={t2} color="bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border-amber-500/20"         onClick={() => next(2)} />
             <RatingBtn label="Bien"   hint={t3} color="bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border-emerald-500/20" onClick={() => next(3)} />
-            <RatingBtn label="Facile" hint={t4} color="bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border-blue-500/20"         onClick={() => next(4)} />
+            <RatingBtn label="Facile" hint={t4} color="bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border-blue-500/20"             onClick={() => next(4)} />
           </div>
         )}
       </div>
@@ -162,7 +165,7 @@ export default function ReviewPage() {
 }
 
 function RatingBtn({ label, hint, color, onClick }: {
-  label: string; hint: string; color: string; onClick: () => void
+  label: string; hint: string; color: string; onClick: () => void;
 }) {
   return (
     <button onClick={onClick}
