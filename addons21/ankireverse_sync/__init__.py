@@ -13,13 +13,14 @@ from pathlib import Path
 
 from aqt import mw, gui_hooks
 from aqt.qt import (
-    QAction, QDialog, QVBoxLayout,
-    QLabel, QProgressBar, QPushButton, Qt
+    QAction, QDialog, QVBoxLayout, QScrollArea, QWidget,
+    QLabel, QProgressBar, QPushButton, QCheckBox, Qt
 )
 
-ENV_FILE   = Path.home() / "Documents/Projets/CODE/AnkiReverse/.env"
-STAMP_FILE = Path.home() / "Library/Application Support/Anki2/addons21/ankireverse_sync/last_sync.txt"
-LOG_FILE   = Path.home() / "Library/Application Support/Anki2/addons21/ankireverse_sync/sync.log"
+ENV_FILE      = Path.home() / "Documents/Projets/CODE/AnkiReverse/.env"
+STAMP_FILE    = Path.home() / "Library/Application Support/Anki2/addons21/ankireverse_sync/last_sync.txt"
+LOG_FILE      = Path.home() / "Library/Application Support/Anki2/addons21/ankireverse_sync/sync.log"
+EXCLUDE_FILE  = Path.home() / "Library/Application Support/Anki2/addons21/ankireverse_sync/excluded_decks.json"
 
 def log(msg: str):
     ts = time.strftime("%H:%M:%S")
@@ -114,22 +115,26 @@ def collect_due_cards(ahead_days: int = 7) -> list:
     """, int(today + ahead_days))
 
     # API native Anki (disponible depuis 2.0.x)
-    models = {str(m["id"]): m for m in mw.col.models.all()}
-    decks  = {str(d["id"]): d for d in mw.col.decks.all()}
+    models   = {str(m["id"]): m for m in mw.col.models.all()}
+    decks    = {str(d["id"]): d for d in mw.col.decks.all()}
+    excluded = load_excluded_decks()
 
     batch = []
     for row in rows:
         cid, nid, did, ord_, queue, ctype, due, ivl, factor, reps, lapses, mod, flds, tags, mid = row
         fields  = flds.split("\x1f")
-        model   = models.get(str(mid), {})
-        deck    = decks.get(str(did), {})
+        model     = models.get(str(mid), {})
+        deck      = decks.get(str(did), {})
+        deck_name = deck.get("name", "Default")
+        if deck_name in excluded:
+            continue
         mfields = model.get("flds", [])
         tmpls   = model.get("tmpls", [{}])
         tmpl    = tmpls[ord_] if ord_ < len(tmpls) else tmpls[0]
         fmap    = {f["name"]: fields[i] for i, f in enumerate(mfields) if i < len(fields)}
         batch.append({
             "id": cid, "nid": nid,
-            "deck": deck.get("name", "Default"),
+            "deck": deck_name,
             "model": model.get("name", "Basic"),
             "fields": json.dumps(fmap, ensure_ascii=False),
             "q": tmpl.get("qfmt", ""), "a": tmpl.get("afmt", ""),
@@ -375,6 +380,70 @@ def run_sync(show_result=True):
     mw.progress.timer(500, check_done, False)
 
 
+# ── Gestion des decks exclus ──────────────────────────────────────────────────
+
+def load_excluded_decks() -> set:
+    try:
+        return set(json.loads(EXCLUDE_FILE.read_text(encoding="utf-8")))
+    except Exception:
+        return set()
+
+
+def save_excluded_decks(decks: set):
+    EXCLUDE_FILE.write_text(json.dumps(sorted(decks), ensure_ascii=False), encoding="utf-8")
+
+
+class DeckFilterDialog(QDialog):
+    def __init__(self):
+        super().__init__(mw)
+        self.setWindowTitle("AnkiReverse — Decks à synchroniser")
+        self.setMinimumWidth(380)
+        self.setMinimumHeight(400)
+
+        excluded = load_excluded_decks()
+        all_decks = sorted(d["name"] for d in mw.col.decks.all() if "::" not in d["name"] or True)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(8)
+
+        layout.addWidget(QLabel("Décochez les decks à exclure de la synchronisation :"))
+
+        # Zone scrollable
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(scroll.NoFrame)
+        container = QWidget()
+        inner = QVBoxLayout(container)
+        inner.setSpacing(4)
+
+        self._checkboxes = {}
+        for name in all_decks:
+            cb = QCheckBox(name)
+            cb.setChecked(name not in excluded)
+            inner.addWidget(cb)
+            self._checkboxes[name] = cb
+
+        inner.addStretch()
+        scroll.setWidget(container)
+        layout.addWidget(scroll)
+
+        # Boutons
+        btn_row = QVBoxLayout()
+        btn_save = QPushButton("Enregistrer")
+        btn_save.clicked.connect(self._save)
+        btn_cancel = QPushButton("Annuler")
+        btn_cancel.clicked.connect(self.reject)
+        btn_row.addWidget(btn_save)
+        btn_row.addWidget(btn_cancel)
+        layout.addLayout(btn_row)
+
+    def _save(self):
+        excluded = {name for name, cb in self._checkboxes.items() if not cb.isChecked()}
+        save_excluded_decks(excluded)
+        self.accept()
+
+
 # ── Hooks ─────────────────────────────────────────────────────────────────────
 
 _menu_added = False
@@ -382,9 +451,14 @@ _menu_added = False
 def on_profile_open():
     global _menu_added
     if not _menu_added:
-        action = QAction("AnkiReverse — Sync maintenant", mw)
-        action.triggered.connect(lambda: run_sync(show_result=True))
-        mw.form.menuTools.addAction(action)
+        action_sync = QAction("AnkiReverse — Sync maintenant", mw)
+        action_sync.triggered.connect(lambda: run_sync(show_result=True))
+        mw.form.menuTools.addAction(action_sync)
+
+        action_cfg = QAction("AnkiReverse — Choisir les decks", mw)
+        action_cfg.triggered.connect(lambda: DeckFilterDialog().exec_())
+        mw.form.menuTools.addAction(action_cfg)
+
         _menu_added = True
     mw.progress.timer(3000, lambda: run_sync(show_result=True), False)
 
