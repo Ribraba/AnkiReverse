@@ -18,6 +18,7 @@ export interface AnkiCard {
   type: number;
   queue: number;
   interval: number;
+  due: number;
   reps: number;
   lapses: number;
 }
@@ -32,6 +33,13 @@ export async function getDueCards(limit = 20, params = ""): Promise<AnkiCard[]> 
   const sep = params ? "&" : "?";
   const res = await fetch(`/api/cards${params}${sep}limit=${limit}`);
   if (!res.ok) throw new Error("Impossible de récupérer les cartes");
+  return res.json();
+}
+
+export async function getExtraCards(aheadDays = 7, limit = 50, params = ""): Promise<AnkiCard[]> {
+  const sep = params ? "&" : "?";
+  const res = await fetch(`/api/cards${params}${sep}ahead=${aheadDays}&limit=${limit}`);
+  if (!res.ok) throw new Error("Impossible de récupérer les cartes supplémentaires");
   return res.json();
 }
 

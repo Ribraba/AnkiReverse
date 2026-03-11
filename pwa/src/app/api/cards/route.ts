@@ -8,8 +8,9 @@ export async function GET(req: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const limit = Math.min(Number(searchParams.get("limit") ?? 20), 100);
+  const limit = Math.min(Number(searchParams.get("limit") ?? 20), 200);
   const decksParam = searchParams.get("decks");
+  const aheadDays = Number(searchParams.get("ahead") ?? 0);
   const deckFilter = decksParam ? decksParam.split(",").map((d) => d.trim()).filter(Boolean) : null;
 
   const now = Math.floor(Date.now() / 1000);
@@ -19,15 +20,30 @@ export async function GET(req: Request) {
     ? `AND deck IN (${deckFilter.map(() => "?").join(",")})`
     : "";
 
-  const result = await turso.execute({
-    sql: `SELECT * FROM cards
-          WHERE ((queue=0) OR (queue IN (1,3) AND due <= ?) OR (queue=2 AND due <= ?))
-          ${whereDecks}
-          ORDER BY due ASC LIMIT ?`,
-    args: deckFilter && deckFilter.length > 0
+  let sql: string;
+  let args: (number | string)[];
+
+  if (aheadDays > 0) {
+    // Mode révisions supplémentaires : cartes dues dans les prochains jours
+    sql = `SELECT * FROM cards
+           WHERE queue=2 AND due > ? AND due <= ?
+           ${whereDecks}
+           ORDER BY due ASC LIMIT ?`;
+    args = deckFilter && deckFilter.length > 0
+      ? [today, today + aheadDays, ...deckFilter, limit]
+      : [today, today + aheadDays, limit];
+  } else {
+    // Mode normal : cartes dues aujourd'hui
+    sql = `SELECT * FROM cards
+           WHERE ((queue=0) OR (queue IN (1,3) AND due <= ?) OR (queue=2 AND due <= ?))
+           ${whereDecks}
+           ORDER BY due ASC LIMIT ?`;
+    args = deckFilter && deckFilter.length > 0
       ? [now, today, ...deckFilter, limit]
-      : [now, today, limit],
-  });
+      : [now, today, limit];
+  }
+
+  const result = await turso.execute({ sql, args });
 
   const cards = result.rows.map((row) => ({
     id: Number(row.id),
@@ -41,6 +57,7 @@ export async function GET(req: Request) {
     type: Number(row.type),
     queue: Number(row.queue),
     interval: Number(row.interval),
+    due: Number(row.due),
     reps: Number(row.reps),
     lapses: Number(row.lapses),
   }));

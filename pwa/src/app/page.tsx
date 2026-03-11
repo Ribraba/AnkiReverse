@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { BookOpen, Bell, BellOff, ArrowRight, ChevronRight, Brain } from "lucide-react";
+import { BookOpen, Bell, BellOff, ArrowRight, ChevronRight, Brain, Zap } from "lucide-react";
 import { getDueCounts, type DueCounts } from "@/lib/api";
 import { isPushSupported, requestNotificationPermission, registerPushSubscription } from "@/lib/push";
 import { getActiveDecks } from "@/app/decks/page";
@@ -136,6 +136,7 @@ export default function Home() {
           <div className="grid grid-cols-2 gap-3">
             <NavCard href="/review" icon={<Brain size={18} />} label="Réviser" sub="Session du jour" />
             <NavCard href="/decks" icon={<BookOpen size={18} />} label="Mes decks" sub="Voir la collection" />
+            <NavCard href="/extra" icon={<Zap size={18} className="text-amber-400" />} label="Révision bonus" sub="Cartes à venir" />
           </div>
         </MacWindow>
 

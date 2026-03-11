@@ -2,7 +2,7 @@
 AnkiReverse Sync — Add-on Anki 2.1.26
 - mw.col.db pour lire Anki (pas de verrou SQLite)
 - urllib pour Turso HTTP API (pas de dépendance externe)
-- Ne pousse que les cartes modifiées depuis le dernier sync
+- Pousse les cartes dues + les 7 prochains jours (révisions supplémentaires)
 """
 import json
 import time
@@ -13,7 +13,7 @@ from pathlib import Path
 
 from aqt import mw, gui_hooks
 from aqt.qt import (
-    QAction, QDialog, QVBoxLayout, QHBoxLayout,
+    QAction, QDialog, QVBoxLayout,
     QLabel, QProgressBar, QPushButton, Qt
 )
 
@@ -87,16 +87,20 @@ def arg(v):
 
 # ── Lecture Anki ──────────────────────────────────────────────────────────────
 
-def collect_due_cards() -> list:
-    """
-    Cartes dues uniquement — c'est tout ce dont la PWA a besoin.
-    - queue=0 : nouvelles cartes
-    - queue=1 : en apprentissage
-    - queue=2 : révisions dues (due <= today_offset)
-    """
+def get_today_offset() -> int:
     crt      = int(mw.col.db.scalar("SELECT crt FROM col WHERE id=1") or 0)
     rollover = int(mw.col.db.scalar("SELECT val FROM config WHERE key='rollover'") or 4)
-    today    = int((time.time() - rollover * 3600 - (crt - rollover * 3600)) // 86400)
+    return int((time.time() - rollover * 3600 - (crt - rollover * 3600)) // 86400)
+
+
+def collect_due_cards(ahead_days: int = 7) -> list:
+    """
+    Cartes dues aujourd'hui + dans les <ahead_days> prochains jours.
+    - queue=0 : nouvelles cartes
+    - queue=1 : en apprentissage
+    - queue=2 : révisions (due <= today + ahead_days)
+    """
+    today = get_today_offset()
 
     rows = mw.col.db.all("""
         SELECT c.id, c.nid, c.did, c.ord, c.queue, c.type,
@@ -106,7 +110,7 @@ def collect_due_cards() -> list:
         WHERE (c.queue = 0)
            OR (c.queue = 1)
            OR (c.queue = 2 AND c.due <= ?)
-    """, int(today))
+    """, int(today + ahead_days))
 
     models = json.loads(mw.col.db.scalar("SELECT models FROM col") or "{}")
     decks  = json.loads(mw.col.db.scalar("SELECT decks FROM col")  or "{}")
@@ -137,19 +141,18 @@ def collect_due_cards() -> list:
 def apply_reviews(reviews: list) -> int:
     if not reviews:
         return 0
-    now = int(time.time())
-    crt      = int(mw.col.db.scalar("SELECT crt FROM col WHERE id=1") or 0)
-    rollover = int(mw.col.db.scalar("SELECT val FROM config WHERE key='rollover'") or 4)
-    today    = int((now - rollover * 3600 - (crt - rollover * 3600)) // 86400)
+    now   = int(time.time())
+    today = get_today_offset()
 
     applied = 0
     for card_id, rating, reviewed_at in reviews:
-        card = mw.col.db.first(
+        row = mw.col.db.first(
             "SELECT queue, type, due, ivl, factor, reps, lapses FROM cards WHERE id=?", card_id)
-        if not card:
+        if not row:
             continue
-        queue, ctype, due, ivl, factor, reps, lapses = card
-        new_reps = reps + 1
+        # db.first() returns a list in Anki 2.1.26
+        queue, ctype, due, ivl, factor, reps, lapses = row[0], row[1], row[2], row[3], row[4], row[5], row[6]
+        new_reps   = reps + 1
         new_lapses = lapses + (1 if rating == 1 else 0)
         if   rating == 1: new_ivl, new_factor, new_queue = 1, max(1300, factor-200), 1
         elif rating == 2: new_ivl, new_factor, new_queue = max(1,int(ivl*1.2)), max(1300,factor-150), 2
@@ -171,12 +174,13 @@ def apply_reviews(reviews: list) -> int:
 
 # ── Tâche réseau ──────────────────────────────────────────────────────────────
 
-def turso_sync_task(cards: list, env: dict):
+def turso_sync_task(cards: list, env: dict, progress_cb=None):
     base  = turso_base_url(env)
     token = env.get("TURSO_TOKEN", "")
     log(f"turso_sync_task: base_url={base}")
 
-    # Pull reviews
+    # 1. Pull reviews
+    if progress_cb: progress_cb("Récupération des révisions iPhone...")
     log("turso_sync_task: pull reviews...")
     res = turso_query(base, token, [{"sql": "SELECT card_id, rating, reviewed_at FROM review_log WHERE synced_to_anki=0"}])
     reviews = []
@@ -185,9 +189,13 @@ def turso_sync_task(cards: list, env: dict):
             reviews.append((int(row[0]["value"]), int(row[1]["value"]), int(row[2]["value"])))
     log(f"turso_sync_task: {len(reviews)} reviews trouvées")
 
-    # Push cards modifiées (batch 100)
-    log(f"turso_sync_task: push {len(cards)} cartes...")
-    stmts = []
+    # 2. Push cards en batch de 500
+    total   = len(cards)
+    sent    = 0
+    stmts   = []
+    batch_n = 0
+    nb_batches = max(1, (total + 499) // 500)
+
     for c in cards:
         stmts.append({"sql": """INSERT OR REPLACE INTO cards
             (id,note_id,deck,model,fields,q_template,a_template,css,tags,queue,type,due,interval,factor,reps,lapses,updated_at)
@@ -196,17 +204,38 @@ def turso_sync_task(cards: list, env: dict):
                 c["q"],c["a"],c["css"],c["tags"],c["queue"],c["type"],c["due"],
                 c["ivl"],c["factor"],c["reps"],c["lapses"],c["mod"])]})
         if len(stmts) == 500:
-            turso_query(base, token, stmts); stmts = []
+            batch_n += 1
+            sent    += len(stmts)
+            if progress_cb:
+                progress_cb(f"Envoi des cartes... ({sent}/{total})", sent, total)
+            log(f"turso_sync_task: batch {batch_n}/{nb_batches} — {sent}/{total} cartes")
+            turso_query(base, token, stmts)
+            stmts = []
+
     if stmts:
+        batch_n += 1
+        sent    += len(stmts)
+        if progress_cb:
+            progress_cb(f"Envoi des cartes... ({sent}/{total})", sent, total)
+        log(f"turso_sync_task: batch {batch_n}/{nb_batches} — {sent}/{total} cartes")
         turso_query(base, token, stmts)
 
-    # Marquer reviews traitées
+    # 3. Marquer reviews traitées
     if reviews:
+        if progress_cb: progress_cb("Mise à jour des révisions...")
         turso_query(base, token, [
             {"sql": "UPDATE review_log SET synced_to_anki=1 WHERE card_id=? AND reviewed_at=?",
              "args": [arg(cid), arg(rat)]} for cid, _, rat in reviews])
 
-    return reviews, len(cards)
+    # 4. Sauvegarder today_offset dans Turso
+    today = get_today_offset()
+    turso_query(base, token, [{
+        "sql": "INSERT OR REPLACE INTO sync_meta(key, value) VALUES('today_offset', ?)",
+        "args": [arg(today)]
+    }])
+
+    log(f"turso_sync_task: terminé — {sent} cartes, {len(reviews)} reviews")
+    return reviews, sent
 
 
 # ── Fenêtre de progression ────────────────────────────────────────────────────
@@ -214,42 +243,49 @@ def turso_sync_task(cards: list, env: dict):
 class SyncDialog(QDialog):
     def __init__(self):
         super().__init__(mw)
-        self.setWindowTitle("AnkiReverse")
+        self.setWindowTitle("AnkiReverse — Synchronisation")
         self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint)
-        self.setMinimumWidth(320)
+        self.setMinimumWidth(360)
         self.setModal(False)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
-        self._label = QLabel("Synchronisation en cours...")
-        self._label.setAlignment(Qt.AlignCenter)
+        self._step = QLabel("Démarrage...")
+        self._step.setAlignment(Qt.AlignLeft)
 
         self._bar = QProgressBar()
-        self._bar.setRange(0, 0)   # indéterminé (animation)
+        self._bar.setRange(0, 0)   # indéterminé
         self._bar.setTextVisible(False)
 
-        layout.addWidget(self._label)
+        layout.addWidget(self._step)
         layout.addWidget(self._bar)
         self.setLayout(layout)
+
+    def set_step(self, text: str, value: int = -1, maximum: int = -1):
+        self._step.setText(text)
+        if maximum > 0:
+            self._bar.setRange(0, maximum)
+            self._bar.setValue(value)
+        else:
+            self._bar.setRange(0, 0)   # reste indéterminé
 
     def set_done(self, pushed: int, applied: int):
         self._bar.setRange(0, 1)
         self._bar.setValue(1)
-        msg = f"↑  {pushed} cartes exportées"
+        lines = [f"✓  {pushed} cartes synchronisées"]
         if applied:
-            msg += f"\n↓  {applied} révisions iPhone importées"
-        self._label.setText(msg)
+            lines.append(f"✓  {applied} révisions iPhone importées")
+        self._step.setText("\n".join(lines))
 
-        # Bouton OK
         btn = QPushButton("OK")
         btn.clicked.connect(self.accept)
         self.layout().addWidget(btn)
 
     def set_error(self, message: str):
         self._bar.hide()
-        self._label.setText(f"Erreur :\n{message}")
+        self._step.setText(f"Erreur :\n{message}")
         btn = QPushButton("OK")
         btn.clicked.connect(self.accept)
         self.layout().addWidget(btn)
@@ -270,10 +306,10 @@ def run_sync(show_result=True):
         return
 
     try:
-        cards = collect_due_cards()
-        log(f"{len(cards)} cartes dues à envoyer")
+        cards = collect_due_cards(ahead_days=7)
+        log(f"{len(cards)} cartes à envoyer (dues + 7 jours)")
     except Exception as e:
-        log(f"ERREUR collect_changed_cards: {e}")
+        log(f"ERREUR collect_due_cards: {e}")
         if show_result:
             dlg = SyncDialog()
             dlg.set_error(str(e))
@@ -287,18 +323,30 @@ def run_sync(show_result=True):
     result_container = [None]
     error_container  = [None]
 
+    def on_progress(text, value=-1, maximum=-1):
+        # Appelé depuis le thread background — Qt n'est pas thread-safe,
+        # on stocke juste le message et check_done l'affichera
+        progress_container[0] = (text, value, maximum)
+
+    progress_container = [None]
+
     def background():
         try:
             log(f"background: début turso_sync_task ({len(cards)} cartes)")
-            result_container[0] = turso_sync_task(cards, env)
+            result_container[0] = turso_sync_task(cards, env, progress_cb=on_progress)
             log(f"background: terminé — {result_container[0][1]} cartes, {len(result_container[0][0])} reviews")
         except Exception as e:
             log(f"background ERREUR: {e}")
             error_container[0] = str(e)
 
     def check_done():
+        # Mise à jour du label si progression disponible
+        if dlg and progress_container[0]:
+            text, val, maxi = progress_container[0]
+            dlg.set_step(text, val, maxi)
+            progress_container[0] = None
+
         if result_container[0] is None and error_container[0] is None:
-            log("check_done: pas encore terminé, repoll dans 500ms")
             mw.progress.timer(500, check_done, False)
             return
 
@@ -346,7 +394,7 @@ def on_profile_close():
     if not env.get("TURSO_URL"):
         return
     try:
-        cards = collect_changed_cards(get_last_sync())
+        cards = collect_due_cards(ahead_days=7)
         turso_sync_task(cards, env)
         save_last_sync()
     except Exception:
