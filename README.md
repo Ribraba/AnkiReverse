@@ -26,10 +26,10 @@ Add-on AnkiReverse Sync        ← s'exécute automatiquement à l'ouverture/fer
 
 ### Comment ça marche ?
 
-1. **Anki Desktop** stocke toutes tes cartes dans un fichier SQLite local (`collection.anki2`)
+1. **Anki Desktop** stocke toutes les cartes dans un fichier SQLite local (`collection.anki2`)
 2. **L'add-on Anki** (ou le script Python) lit ce fichier et pousse les cartes dues vers **Turso** (base cloud)
 3. La **PWA Next.js** déployée sur Vercel interroge Turso via API pour afficher les cartes
-4. Quand tu révises sur iPhone, la note (1-4) est enregistrée dans Turso
+4. Quand on révise sur iPhone, la note (1-4) est enregistrée dans Turso
 5. Au prochain démarrage d'Anki Desktop, l'add-on récupère les révisions iPhone et les applique dans Anki (algorithme SM-2)
 
 ---
@@ -118,7 +118,7 @@ AnkiReverse/
 
 ### Prérequis
 
-- Anki Desktop installé sur Mac avec tes cartes
+- Anki Desktop installé sur Mac avec les cartes
 - Compte GitHub (pour l'OAuth)
 - Compte Turso (gratuit) : https://turso.tech
 - Compte Vercel (gratuit) : https://vercel.com
@@ -146,10 +146,10 @@ TURSO_URL="libsql://..." TURSO_TOKEN="..." python scripts/init_turso.py
 
 ### Étape 2 — GitHub OAuth
 
-1. Va sur https://github.com/settings/developers → **New OAuth App**
+1. Aller sur https://github.com/settings/developers → **New OAuth App**
 2. **Homepage URL** : `https://ton-app.vercel.app`
 3. **Authorization callback URL** : `https://ton-app.vercel.app/api/auth/callback/github`
-4. Copie le **Client ID** et génère un **Client Secret**
+4. Copier le **Client ID** et génèrer un **Client Secret**
 
 ---
 
@@ -208,7 +208,7 @@ pip install libsql-experimental
 cp .env.example .env
 ```
 
-Remplis `TURSO_URL` et `TURSO_TOKEN` dans ce fichier `.env`.
+Remplir `TURSO_URL` et `TURSO_TOKEN` dans ce fichier `.env`.
 
 **5c. Copier le dossier de l'add-on dans Anki**
 
@@ -221,15 +221,15 @@ cp -r addons21/ankireverse_sync \
 
 **5d. Redémarrer Anki Desktop**
 
-C'est tout. Dès que tu ouvres Anki, le sync se lance en arrière-plan.
-Tu peux aussi le déclencher manuellement via **Outils → AnkiReverse — Sync maintenant**.
+C'est tout. Dès que l'on ouvre Anki, le sync se lance en arrière-plan.
+On peut aussi le déclencher manuellement via **Outils → AnkiReverse — Sync maintenant**.
 
 **Ce que fait l'add-on :**
 - **À l'ouverture** d'Anki → sync silencieux (importe les révisions iPhone, exporte les cartes du jour)
 - **À la fermeture** d'Anki → sync final pour ne rien perdre
 - **Menu Outils** → sync manuel avec notification du résultat
 
-**Si tu préfères le script en ligne de commande (sans add-on) :**
+**Si on préfère le script en ligne de commande (sans add-on) :**
 ```bash
 python scripts/sync_anki_turso.py
 ```
@@ -238,9 +238,9 @@ python scripts/sync_anki_turso.py
 
 ### Étape 6 — Installer la PWA sur iPhone
 
-1. Ouvre l'URL Vercel dans **Safari** (pas Chrome)
-2. Connecte-toi avec ton compte GitHub
-3. Appuie sur le bouton **Partager** (carré avec flèche) → **Sur l'écran d'accueil**
+1. Ouvrir l'URL Vercel dans **Safari** (pas Chrome)
+2. Se connecter avec son compte GitHub
+3. Appuyer sur le bouton **Partager** (carré avec flèche) → **Sur l'écran d'accueil**
 4. L'app s'installe comme une application native avec l'icône cerveau
 
 ---
