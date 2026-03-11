@@ -1,16 +1,14 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import { Brain } from "lucide-react";
+import Image from "next/image";
 
 export default function LoginPage() {
   return (
     <main className="min-h-screen bg-[#09090b] text-white flex items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-8 text-center">
         <div className="space-y-3">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center mx-auto">
-            <Brain size={28} className="text-white" />
-          </div>
+          <Image src="/icon-192.png" width={72} height={72} alt="AnkiReverse" className="rounded-2xl mx-auto" />
           <h1 className="text-2xl font-bold tracking-tight">AnkiReverse</h1>
           <p className="text-zinc-400 text-sm">Connecte-toi pour accéder à tes fiches</p>
         </div>
