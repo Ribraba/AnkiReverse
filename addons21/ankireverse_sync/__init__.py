@@ -87,16 +87,28 @@ def arg(v):
 
 # ── Lecture Anki ──────────────────────────────────────────────────────────────
 
-def collect_changed_cards(since: int) -> list:
-    """Cartes actives (non suspendues) modifiées depuis `since`."""
+def collect_due_cards() -> list:
+    """
+    Cartes dues uniquement — c'est tout ce dont la PWA a besoin.
+    - queue=0 : nouvelles cartes
+    - queue=1 : en apprentissage
+    - queue=2 : révisions dues (due <= today_offset)
+    """
+    crt      = mw.col.db.scalar("SELECT crt FROM col WHERE id=1") or 0
+    rrow     = mw.col.db.first("SELECT val FROM config WHERE key='rollover'")
+    rollover = int(rrow[0]) if rrow else 4
+    import time as _t
+    today    = (_t.time() - rollover * 3600 - (crt - rollover * 3600)) // 86400
+
     rows = mw.col.db.all("""
         SELECT c.id, c.nid, c.did, c.ord, c.queue, c.type,
                c.due, c.ivl, c.factor, c.reps, c.lapses, c.mod,
                n.flds, n.tags, n.mid
         FROM cards c JOIN notes n ON c.nid = n.id
-        WHERE c.queue >= 0
-          AND (c.mod > ? OR n.mod > ?)
-    """, since, since)
+        WHERE (c.queue = 0)
+           OR (c.queue = 1)
+           OR (c.queue = 2 AND c.due <= ?)
+    """, int(today))
 
     models = json.loads(mw.col.db.scalar("SELECT models FROM col") or "{}")
     decks  = json.loads(mw.col.db.scalar("SELECT decks FROM col")  or "{}")
@@ -261,10 +273,8 @@ def run_sync(show_result=True):
         return
 
     try:
-        since = get_last_sync()
-        log(f"Lecture cartes modifiées depuis {since}")
-        cards = collect_changed_cards(since)
-        log(f"{len(cards)} cartes à envoyer")
+        cards = collect_due_cards()
+        log(f"{len(cards)} cartes dues à envoyer")
     except Exception as e:
         log(f"ERREUR collect_changed_cards: {e}")
         if show_result:
@@ -282,7 +292,7 @@ def run_sync(show_result=True):
 
     def background():
         try:
-            log("background: début turso_sync_task")
+            log(f"background: début turso_sync_task ({len(cards)} cartes)")
             result_container[0] = turso_sync_task(cards, env)
             log(f"background: terminé — {result_container[0][1]} cartes, {len(result_container[0][0])} reviews")
         except Exception as e:
