@@ -94,11 +94,9 @@ def collect_due_cards() -> list:
     - queue=1 : en apprentissage
     - queue=2 : révisions dues (due <= today_offset)
     """
-    crt      = mw.col.db.scalar("SELECT crt FROM col WHERE id=1") or 0
-    rrow     = mw.col.db.first("SELECT val FROM config WHERE key='rollover'")
-    rollover = int(rrow[0]) if rrow else 4
-    import time as _t
-    today    = (_t.time() - rollover * 3600 - (crt - rollover * 3600)) // 86400
+    crt      = int(mw.col.db.scalar("SELECT crt FROM col WHERE id=1") or 0)
+    rollover = int(mw.col.db.scalar("SELECT val FROM config WHERE key='rollover'") or 4)
+    today    = int((time.time() - rollover * 3600 - (crt - rollover * 3600)) // 86400)
 
     rows = mw.col.db.all("""
         SELECT c.id, c.nid, c.did, c.ord, c.queue, c.type,
@@ -140,10 +138,9 @@ def apply_reviews(reviews: list) -> int:
     if not reviews:
         return 0
     now = int(time.time())
-    crt  = mw.col.db.scalar("SELECT crt FROM col WHERE id=1") or 0
-    rrow = mw.col.db.first("SELECT val FROM config WHERE key='rollover'")
-    rollover = int(rrow[0]) if rrow else 4
-    today = (now - rollover * 3600 - (crt - rollover * 3600)) // 86400
+    crt      = int(mw.col.db.scalar("SELECT crt FROM col WHERE id=1") or 0)
+    rollover = int(mw.col.db.scalar("SELECT val FROM config WHERE key='rollover'") or 4)
+    today    = int((now - rollover * 3600 - (crt - rollover * 3600)) // 86400)
 
     applied = 0
     for card_id, rating, reviewed_at in reviews:
