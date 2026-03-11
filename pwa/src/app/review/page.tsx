@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, PartyPopper, CheckCircle } from "lucide-react";
 import { getDueCards, submitReview, type AnkiCard } from "@/lib/api";
 import { getActiveDecks } from "@/app/decks/page";
+import { typesetMath } from "@/lib/mathjax";
 
 function renderQuestion(template: string, fields: Record<string, string>): string {
   return template
@@ -48,6 +49,7 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const active = getActiveDecks();
@@ -57,6 +59,11 @@ export default function ReviewPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  // Re-render MathJax après chaque changement de carte ou affichage de la réponse
+  useEffect(() => {
+    typesetMath(contentRef.current ?? undefined);
+  }, [index, showAnswer]);
 
   const card = cards[index];
   const progress = cards.length > 0 ? (index / cards.length) * 100 : 0;
@@ -123,7 +130,7 @@ export default function ReviewPage() {
       </div>
 
       {/* Zone de contenu scrollable */}
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+      <div ref={contentRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
         {card.css && <style dangerouslySetInnerHTML={{ __html: card.css }} />}
 
         {/* Question */}

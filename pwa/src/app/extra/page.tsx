@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Zap, CheckCircle } from "lucide-react";
 import { getExtraCards, submitReview, type AnkiCard } from "@/lib/api";
 import { getActiveDecks } from "@/app/decks/page";
+import { typesetMath } from "@/lib/mathjax";
 
 function renderTemplate(template: string, fields: Record<string, string>): string {
   return template.replace(/\{\{([^}]+)\}\}/g, (_, key) => fields[key.trim()] ?? "");
@@ -34,6 +35,7 @@ export default function ExtraReviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const active = getActiveDecks();
@@ -43,6 +45,10 @@ export default function ExtraReviewPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    typesetMath(contentRef.current ?? undefined);
+  }, [index, showAnswer]);
 
   const card = cards[index];
   const progress = cards.length > 0 ? (index / cards.length) * 100 : 0;
@@ -107,7 +113,7 @@ export default function ExtraReviewPage() {
       </div>
 
       {/* Carte */}
-      <div className="flex-1 flex flex-col px-4 py-3 gap-3">
+      <div ref={contentRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
         <div className="rounded-2xl border border-white/8 bg-white/4 p-5 flex-1 flex items-center justify-center min-h-[140px]">
           {card.css && <style dangerouslySetInnerHTML={{ __html: card.css }} />}
           <div className="prose prose-invert prose-sm max-w-none text-center w-full"
