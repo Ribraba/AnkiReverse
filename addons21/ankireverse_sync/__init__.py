@@ -1,10 +1,10 @@
 """
 AnkiReverse Sync — Add-on Anki
-Synchronise les cartes avec Turso à l'ouverture/fermeture d'Anki.
-Utilise mw.col (API interne) pour éviter les conflits SQLite.
+Compatible Anki 2.1.26 (Python 3.8)
 """
 import json
 import time
+import threading
 from pathlib import Path
 
 from aqt import mw, gui_hooks
@@ -25,20 +25,20 @@ def load_env() -> dict:
     return env
 
 
-# ── Lecture de la collection via mw.col ───────────────────────────────────────
+# ── Lecture collection via mw.col (thread principal) ──────────────────────────
 
 def collect_cards_data() -> list:
-    """Lit les cartes depuis mw.col.db (thread principal)."""
+    """Lit les cartes via mw.col.db — retourne une liste sérialisable."""
     if not mw.col:
         return []
 
-    rows = mw.col.db.execute("""
+    rows = mw.col.db.all("""
         SELECT c.id, c.nid, c.did, c.ord, c.queue, c.type,
                c.due, c.ivl, c.factor, c.reps, c.lapses, c.mod,
                n.flds, n.tags, n.mid
         FROM cards c
         JOIN notes n ON c.nid = n.id
-    """).fetchall()
+    """)
 
     models_json = mw.col.db.scalar("SELECT models FROM col")
     decks_json  = mw.col.db.scalar("SELECT decks FROM col")
@@ -73,18 +73,17 @@ def collect_cards_data() -> list:
 
 
 def apply_reviews_to_col(reviews: list) -> int:
-    """Applique les révisions Turso via l'API Anki (thread principal)."""
+    """Applique les révisions sur le thread principal via mw.col.db."""
     if not mw.col or not reviews:
         return 0
 
-    applied = 0
     now = int(time.time())
-
     crt = mw.col.db.scalar("SELECT crt FROM col WHERE id=1") or 0
-    row = mw.col.db.first("SELECT val FROM config WHERE key='rollover'")
-    rollover = int(row[0]) if row else 4
+    rollover_row = mw.col.db.first("SELECT val FROM config WHERE key='rollover'")
+    rollover = int(rollover_row[0]) if rollover_row else 4
     today = (now - rollover * 3600 - (crt - rollover * 3600)) // 86400
 
+    applied = 0
     for rev_id, card_id, rating, reviewed_at in reviews:
         card = mw.col.db.first(
             "SELECT queue, type, due, ivl, factor, reps, lapses FROM cards WHERE id=?",
@@ -108,20 +107,21 @@ def apply_reviews_to_col(reviews: list) -> int:
 
         new_due = today + new_ivl if new_queue == 2 else now + 600
 
-        mw.col.db.execute("""
-            UPDATE cards SET queue=?, type=2, due=?, ivl=?, factor=?, reps=?, lapses=?, mod=?
-            WHERE id=?
-        """, new_queue, new_due, new_ivl, new_factor, new_reps, new_lapses, now, card_id)
-
-        mw.col.db.execute("""
-            INSERT OR IGNORE INTO revlog (id, cid, usn, ease, ivl, lastIvl, factor, time, type)
-            VALUES (?, ?, -1, ?, ?, ?, ?, ?, 1)
-        """, reviewed_at * 1000, card_id, rating, new_ivl, ivl, new_factor, 60000)
-
+        mw.col.db.execute(
+            "UPDATE cards SET queue=?, type=2, due=?, ivl=?, factor=?, reps=?, lapses=?, mod=? WHERE id=?",
+            new_queue, new_due, new_ivl, new_factor, new_reps, new_lapses, now, card_id
+        )
+        mw.col.db.execute(
+            "INSERT OR IGNORE INTO revlog (id,cid,usn,ease,ivl,lastIvl,factor,time,type) VALUES (?,?,-1,?,?,?,?,?,1)",
+            reviewed_at * 1000, card_id, rating, new_ivl, ivl, new_factor, 60000
+        )
         applied += 1
 
     if applied:
-        mw.col.save()
+        try:
+            mw.col.save()
+        except Exception:
+            pass
 
     return applied
 
@@ -129,28 +129,23 @@ def apply_reviews_to_col(reviews: list) -> int:
 # ── Tâche réseau (thread arrière-plan) ────────────────────────────────────────
 
 def turso_sync_task(cards_data: list):
-    """
-    Tourne dans un thread arrière-plan.
-    Retourne (reviews_to_apply, pushed_count, synced_ids).
-    """
+    """S'exécute dans un thread arrière-plan. Retourne (reviews, pushed, synced_ids, error)."""
     try:
         import libsql_experimental as libsql
     except ImportError:
-        return None, 0, [], "libsql_experimental non installé"
+        return [], 0, [], "libsql_experimental non installé (pip install libsql-experimental)"
 
     env = load_env()
     if not env.get("TURSO_URL") or not env.get("TURSO_TOKEN"):
-        return None, 0, [], f"Fichier .env introuvable ou incomplet ({ENV_FILE})"
+        return [], 0, [], f"Fichier .env introuvable ou incomplet\n({ENV_FILE})"
 
     try:
         turso = libsql.connect(database=env["TURSO_URL"], auth_token=env["TURSO_TOKEN"])
 
-        # Pull reviews depuis Turso
         reviews = turso.execute(
             "SELECT id, card_id, rating, reviewed_at FROM review_log WHERE synced_to_anki=0"
         ).fetchall()
 
-        # Push cards vers Turso
         for b in cards_data:
             turso.execute("""
                 INSERT OR REPLACE INTO cards
@@ -160,17 +155,14 @@ def turso_sync_task(cards_data: list):
             """, b)
         turso.commit()
 
-        # Marquer les reviews comme traitées
         synced_ids = [r[0] for r in reviews]
-
-        return reviews, len(cards_data), synced_ids, None
+        return list(reviews), len(cards_data), synced_ids, None
 
     except Exception as e:
-        return None, 0, [], str(e)
+        return [], 0, [], str(e)
 
 
 def mark_synced_task(synced_ids: list):
-    """Marque les reviews comme appliquées dans Turso (thread arrière-plan)."""
     if not synced_ids:
         return
     try:
@@ -194,21 +186,24 @@ def run_sync(show_result=True):
     cards_data = collect_cards_data()
 
     # 2. Lancer le réseau en arrière-plan
-    def background():
-        return turso_sync_task(cards_data)
+    result_container = [None]
 
-    def on_done(future):
-        reviews, pushed, synced_ids, error = future.result()
+    def background():
+        result_container[0] = turso_sync_task(cards_data)
+
+    def on_main_thread():
+        if result_container[0] is None:
+            return
+        reviews, pushed, synced_ids, error = result_container[0]
 
         if error:
-            tooltip(f"AnkiReverse sync erreur : {error}")
+            tooltip(f"AnkiReverse : {error}")
             return
 
         # 3. Appliquer les reviews sur le thread principal
         applied = apply_reviews_to_col(reviews)
 
-        # 4. Marquer comme traités dans Turso (arrière-plan)
-        import threading
+        # 4. Marquer comme traités (arrière-plan)
         threading.Thread(target=mark_synced_task, args=(synced_ids,), daemon=True).start()
 
         if show_result:
@@ -217,7 +212,12 @@ def run_sync(show_result=True):
                 period=4000
             )
 
-    mw.taskman.run_in_background(background, on_done)
+    def thread_target():
+        background()
+        # Retour sur le thread principal via mw.progress.timer
+        mw.progress.timer(10, on_main_thread, False)
+
+    threading.Thread(target=thread_target, daemon=True).start()
 
 
 # ── Hooks ─────────────────────────────────────────────────────────────────────
@@ -226,19 +226,24 @@ _menu_added = False
 
 def on_profile_open():
     global _menu_added
-    # Ajouter le menu une seule fois
     if not _menu_added:
         action = QAction("AnkiReverse — Sync maintenant", mw)
         action.triggered.connect(lambda: run_sync(show_result=True))
         mw.form.menuTools.addAction(action)
         _menu_added = True
 
-    # Sync silencieux au démarrage
     run_sync(show_result=False)
 
 
 def on_profile_close():
-    run_sync(show_result=False)
+    # Sync synchrone à la fermeture pour ne pas perdre de données
+    if not mw.col:
+        return
+    cards_data = collect_cards_data()
+    reviews, pushed, synced_ids, error = turso_sync_task(cards_data)
+    if not error:
+        apply_reviews_to_col(reviews)
+        mark_synced_task(synced_ids)
 
 
 gui_hooks.profile_did_open.append(on_profile_open)
