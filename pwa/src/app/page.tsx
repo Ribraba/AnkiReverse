@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Brain, BookOpen, Bell, BellOff, ArrowRight, ChevronRight } from "lucide-react";
+import Image from "next/image";
+import { BookOpen, Bell, BellOff, ArrowRight, ChevronRight, Brain } from "lucide-react";
 import { getDueCounts, type DueCounts } from "@/lib/api";
 import { isPushSupported, requestNotificationPermission, registerPushSubscription } from "@/lib/push";
 import { getActiveDecks } from "@/app/decks/page";
@@ -34,11 +35,15 @@ export default function Home() {
     <main className="min-h-screen bg-[#09090b] text-white">
       {/* Header */}
       <header className="border-b border-white/5 bg-[#09090b]/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-lg mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
-              <Brain size={14} className="text-white" />
-            </div>
+        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Image
+              src="/icon-192.png"
+              width={28}
+              height={28}
+              alt="AnkiReverse"
+              className="rounded-lg"
+            />
             <span className="font-semibold tracking-tight">AnkiReverse</span>
           </div>
           <Link href="/review" className="flex items-center gap-1 text-xs text-zinc-400 hover:text-white transition-colors">
@@ -57,10 +62,8 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Stats card */}
-        <div className="animate-fade-up rounded-2xl border border-white/8 bg-white/4 backdrop-blur-sm p-5 space-y-4"
-          style={{ animationDelay: "80ms" }}>
-
+        {/* Stats card — macOS window */}
+        <MacWindow title="session.anki" delay={80}>
           {loading && (
             <div className="space-y-3">
               <div className="h-3 w-24 bg-white/8 rounded-full animate-pulse" />
@@ -79,32 +82,33 @@ export default function Home() {
                 <span className="text-zinc-400 text-sm">cartes à réviser</span>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 mt-4">
                 <Pill label="Nouvelles" value={counts.new} color="bg-blue-500/10 text-blue-400 border-blue-500/20" />
                 <Pill label="Révisions" value={counts.review} color="bg-emerald-500/10 text-emerald-400 border-emerald-500/20" />
                 <Pill label="En cours" value={counts.learning} color="bg-amber-500/10 text-amber-400 border-amber-500/20" />
               </div>
 
-              {counts.total > 0 ? (
-                <Link href="/review"
-                  className="flex items-center justify-between w-full bg-violet-600 hover:bg-violet-500 active:scale-[0.98] transition-all rounded-xl px-4 py-3 font-medium text-sm">
-                  <span>Commencer la session</span>
-                  <ChevronRight size={16} className="opacity-70" />
-                </Link>
-              ) : (
-                <p className="text-emerald-400 text-sm flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-                  Tout à jour — revenez demain
-                </p>
-              )}
+              <div className="mt-4">
+                {counts.total > 0 ? (
+                  <Link href="/review"
+                    className="flex items-center justify-between w-full bg-violet-600 hover:bg-violet-500 active:scale-[0.98] transition-all rounded-xl px-4 py-3 font-medium text-sm">
+                    <span>Commencer la session</span>
+                    <ChevronRight size={16} className="opacity-70" />
+                  </Link>
+                ) : (
+                  <p className="text-emerald-400 text-sm flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                    Tout à jour — revenez demain
+                  </p>
+                )}
+              </div>
             </>
           )}
-        </div>
+        </MacWindow>
 
-        {/* Notifications */}
+        {/* Notifications — macOS window */}
         {isPushSupported() && notifStatus !== "ok" && (
-          <div className="animate-fade-up rounded-2xl border border-white/8 bg-white/4 backdrop-blur-sm p-5"
-            style={{ animationDelay: "160ms" }}>
+          <MacWindow title="notifications" delay={160}>
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-white/6 flex items-center justify-center">
@@ -124,17 +128,38 @@ export default function Home() {
                 </button>
               )}
             </div>
-          </div>
+          </MacWindow>
         )}
 
-        {/* Navigation */}
-        <div className="animate-fade-up grid grid-cols-2 gap-3" style={{ animationDelay: "240ms" }}>
-          <NavCard href="/review" icon={<Brain size={18} />} label="Réviser" sub="Session du jour" />
-          <NavCard href="/decks" icon={<BookOpen size={18} />} label="Mes decks" sub="Voir la collection" />
-        </div>
+        {/* Navigation — macOS window */}
+        <MacWindow title="navigation" delay={240}>
+          <div className="grid grid-cols-2 gap-3">
+            <NavCard href="/review" icon={<Brain size={18} />} label="Réviser" sub="Session du jour" />
+            <NavCard href="/decks" icon={<BookOpen size={18} />} label="Mes decks" sub="Voir la collection" />
+          </div>
+        </MacWindow>
 
       </div>
     </main>
+  );
+}
+
+function MacWindow({ title, children, delay = 0 }: { title?: string; children: React.ReactNode; delay?: number }) {
+  return (
+    <div
+      className="animate-fade-up rounded-2xl border border-white/8 overflow-hidden bg-[#141416]"
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      {/* Title bar */}
+      <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#1f1f21] border-b border-white/6">
+        <div className="w-3 h-3 rounded-full bg-[#FF5F57]" />
+        <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
+        <div className="w-3 h-3 rounded-full bg-[#28C840]" />
+        {title && <span className="ml-2 text-xs text-zinc-600 select-none">{title}</span>}
+      </div>
+      {/* Content */}
+      <div className="p-5">{children}</div>
+    </div>
   );
 }
 
@@ -150,7 +175,7 @@ function Pill({ label, value, color }: { label: string; value: number; color: st
 function NavCard({ href, icon, label, sub }: { href: string; icon: React.ReactNode; label: string; sub: string }) {
   return (
     <Link href={href}
-      className="rounded-2xl border border-white/8 bg-white/4 hover:bg-white/8 active:scale-[0.98] transition-all p-4 block">
+      className="rounded-xl border border-white/8 bg-white/4 hover:bg-white/8 active:scale-[0.98] transition-all p-4 block">
       <div className="w-8 h-8 rounded-lg bg-white/6 flex items-center justify-center mb-3 text-zinc-300">
         {icon}
       </div>
