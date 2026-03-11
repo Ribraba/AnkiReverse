@@ -178,61 +178,67 @@ def mark_synced_task(synced_ids: list):
 
 # ── Orchestration ─────────────────────────────────────────────────────────────
 
+_sync_popup = None
+
 def show_sync_popup(pushed: int, applied: int):
     """Affiche une popup style AnkiWeb qui se ferme automatiquement après 3s."""
+    global _sync_popup, _sync_timer
+
+    # Ferme l'éventuelle popup précédente
+    if _sync_popup is not None:
+        try:
+            _sync_popup.close()
+        except Exception:
+            pass
+
     dlg = QDialog(mw)
-    dlg.setWindowTitle("AnkiReverse — Sync")
-    dlg.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
-    dlg.setAttribute(Qt.WA_DeleteOnClose)
+    dlg.setWindowTitle("AnkiReverse")
+    dlg.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+    dlg.setStyleSheet("background: #1e1e1e; border: 1px solid #333; border-radius: 8px;")
 
     layout = QVBoxLayout()
-    layout.setContentsMargins(20, 16, 20, 16)
-    layout.setSpacing(6)
+    layout.setContentsMargins(20, 14, 20, 14)
+    layout.setSpacing(4)
 
-    title = QLabel("✓ Synchronisation terminée")
-    title.setStyleSheet("font-weight: bold; font-size: 13px;")
+    title = QLabel("✓  Sync AnkiReverse terminée")
+    title.setStyleSheet("color: #fff; font-weight: bold; font-size: 13px;")
 
-    details = QLabel(f"↑  {pushed} cartes envoyées vers le cloud")
+    line2 = f"↑  {pushed} cartes exportées"
     if applied:
-        details.setText(f"↑  {pushed} cartes envoyées\n↓  {applied} révisions iPhone importées")
-    details.setStyleSheet("color: #666; font-size: 12px;")
+        line2 += f"\n↓  {applied} révisions iPhone importées"
+    details = QLabel(line2)
+    details.setStyleSheet("color: #aaa; font-size: 12px;")
 
     layout.addWidget(title)
     layout.addWidget(details)
     dlg.setLayout(layout)
 
-    # Centrer en bas à droite de la fenêtre principale
     dlg.adjustSize()
-    mw_geo = mw.geometry()
-    x = mw_geo.x() + mw_geo.width() - dlg.width() - 20
-    y = mw_geo.y() + mw_geo.height() - dlg.height() - 40
-    dlg.move(x, y)
+    geo = mw.geometry()
+    dlg.move(geo.x() + geo.width() - dlg.width() - 20,
+             geo.y() + geo.height() - dlg.height() - 50)
     dlg.show()
 
-    # Fermeture automatique après 3 secondes
-    QTimer.singleShot(3000, dlg.close)
+    _sync_popup = dlg
+
+    # Timer stocké pour éviter le garbage collection
+    _sync_timer = QTimer()
+    _sync_timer.setSingleShot(True)
+    _sync_timer.timeout.connect(dlg.close)
+    _sync_timer.start(3000)
 
 
 def run_sync(show_result=True):
     if not mw.col:
         return
 
-    # 1. Lire les données Anki sur le thread principal
     cards_data = collect_cards_data()
-
-    # Afficher indicateur de progression pendant le sync
-    if show_result:
-        mw.progress.start(label="AnkiReverse — Sync en cours...", immediate=True)
-
     result_container = [None]
 
     def background():
         result_container[0] = turso_sync_task(cards_data)
 
     def on_main_thread():
-        if show_result:
-            mw.progress.finish()
-
         if result_container[0] is None:
             return
         reviews, pushed, synced_ids, error = result_container[0]
