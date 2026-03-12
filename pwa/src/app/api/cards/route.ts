@@ -16,9 +16,12 @@ export async function GET(req: Request) {
   const now = Math.floor(Date.now() / 1000);
   const today = await getToday();
 
+  // Filtre par deck : match exact + sous-decks (deck = X OR deck LIKE 'X::%')
   const whereDecks = deckFilter && deckFilter.length > 0
-    ? `AND deck IN (${deckFilter.map(() => "?").join(",")})`
+    ? `AND (${deckFilter.map(() => "(deck = ? OR deck LIKE (? || '::%'))").join(" OR ")})`
     : "";
+  // Chaque deck est passé deux fois : une pour = et une pour LIKE
+  const deckArgs: string[] = deckFilter ? deckFilter.flatMap(d => [d, d]) : [];
 
   let sql: string;
   let args: (number | string)[];
@@ -29,7 +32,7 @@ export async function GET(req: Request) {
            ${whereDecks}
            ORDER BY due ASC LIMIT ?`;
     args = deckFilter && deckFilter.length > 0
-      ? [today, today + aheadDays, ...deckFilter, limit]
+      ? [today, today + aheadDays, ...deckArgs, limit]
       : [today, today + aheadDays, limit];
 
     const result = await turso.execute({ sql, args });
@@ -42,7 +45,7 @@ export async function GET(req: Request) {
      ${whereDecks}
      ORDER BY due ASC LIMIT ?`;
   const reviewArgs: (number | string)[] = deckFilter?.length
-    ? [now, today, ...deckFilter, limit]
+    ? [now, today, ...deckArgs, limit]
     : [now, today, limit];
 
   const reviewResult = await turso.execute({ sql: reviewSql, args: reviewArgs });
@@ -58,7 +61,7 @@ export async function GET(req: Request) {
      ${whereDecks}
      ORDER BY due ASC LIMIT ?`;
   const newArgs: (number | string)[] = deckFilter?.length
-    ? [...deckFilter, limit]
+    ? [...deckArgs, limit]
     : [limit];
 
   const newResult = await turso.execute({ sql: newSql, args: newArgs });

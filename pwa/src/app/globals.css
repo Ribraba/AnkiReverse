@@ -78,3 +78,15 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.3s ease forwards;
 }
+
+/* Responsive card content (Anki cards) */
+.prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.prose img {
+  max-width: 100%;
+  height: auto;
+}

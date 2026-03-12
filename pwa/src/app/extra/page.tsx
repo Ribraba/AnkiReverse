@@ -5,22 +5,26 @@ import Link from "next/link";
 import { ArrowLeft, Zap, CheckCircle } from "lucide-react";
 import { getExtraCards, submitReview, type AnkiCard } from "@/lib/api";
 import { getActiveDecks } from "@/app/decks/page";
-import { typesetMath } from "@/lib/mathjax";
+import { typesetMath, preprocessLatex } from "@/lib/mathjax";
 
 function renderQuestion(template: string, fields: Record<string, string>): string {
-  return template.replace(/\{\{([^}]+)\}\}/g, (_, key) => fields[key.trim()] ?? "").trim();
+  return preprocessLatex(
+    template.replace(/\{\{([^}]+)\}\}/g, (_, key) => fields[key.trim()] ?? "").trim()
+  );
 }
 
 function renderFullAnswer(qTemplate: string, aTemplate: string, fields: Record<string, string>): string {
   const front = renderQuestion(qTemplate, fields);
-  return aTemplate
-    .replace(/\{\{FrontSide\}\}/gi, front)
-    .replace(/\{\{([^}]+)\}\}/g, (_, key) => fields[key.trim()] ?? "")
-    .replace(
-      /<hr\s+id=["']?answer["']?\s*\/?>/gi,
-      '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:20px 0"/>'
-    )
-    .trim();
+  return preprocessLatex(
+    aTemplate
+      .replace(/\{\{FrontSide\}\}/gi, front)
+      .replace(/\{\{([^}]+)\}\}/g, (_, key) => fields[key.trim()] ?? "")
+      .replace(
+        /<hr\s+id=["']?answer["']?\s*\/?>/gi,
+        '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:20px 0"/>'
+      )
+      .trim()
+  );
 }
 
 function daysUntil(due: number): string {

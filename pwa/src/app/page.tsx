@@ -16,6 +16,112 @@ interface DeckRow {
   total: number;
 }
 
+interface DeckNode {
+  key: string;
+  label: string;
+  new: number;
+  learning: number;
+  review: number;
+  total: number;
+  children: DeckNode[];
+}
+
+function buildDeckTree(decks: DeckRow[]): DeckNode[] {
+  function build(prefix: string, items: DeckRow[]): DeckNode[] {
+    const groups = new Map<string, DeckRow[]>();
+    for (const d of items) {
+      const rest = prefix ? d.name.slice(prefix.length + 2) : d.name;
+      const seg = rest.split("::")[0];
+      const arr = groups.get(seg) ?? [];
+      arr.push(d);
+      groups.set(seg, arr);
+    }
+    const nodes: DeckNode[] = [];
+    for (const [seg, group] of groups) {
+      const key = prefix ? `${prefix}::${seg}` : seg;
+      const isLeaf = group.length === 1 && group[0].name === key;
+      const children = isLeaf ? [] : build(key, group);
+      const totals = isLeaf
+        ? { new: group[0].new, learning: group[0].learning, review: group[0].review, total: group[0].total }
+        : {
+            new: children.reduce((s, c) => s + c.new, 0),
+            learning: children.reduce((s, c) => s + c.learning, 0),
+            review: children.reduce((s, c) => s + c.review, 0),
+            total: children.reduce((s, c) => s + c.total, 0),
+          };
+      nodes.push({ key, label: seg, ...totals, children });
+    }
+    return nodes.sort((a, b) => a.label.localeCompare(b.label, "fr"));
+  }
+  return build("", decks);
+}
+
+function DeckCounts({ node }: { node: DeckNode }) {
+  return (
+    <div className="flex items-center gap-1.5 shrink-0">
+      {node.new > 0 && (
+        <span className="text-[11px] font-semibold text-blue-400 bg-blue-500/10 rounded-md px-1.5 py-0.5">{node.new}</span>
+      )}
+      {node.learning > 0 && (
+        <span className="text-[11px] font-semibold text-amber-400 bg-amber-500/10 rounded-md px-1.5 py-0.5">{node.learning}</span>
+      )}
+      {node.review > 0 && (
+        <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 rounded-md px-1.5 py-0.5">{node.review}</span>
+      )}
+    </div>
+  );
+}
+
+function DeckTreeView({ nodes, depth = 0 }: { nodes: DeckNode[]; depth?: number }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  function toggle(key: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {nodes.map((node) => (
+        <div key={node.key}>
+          {node.children.length > 0 ? (
+            <>
+              <button
+                onClick={() => toggle(node.key)}
+                className="w-full flex items-center gap-2.5 rounded-xl border border-white/8 bg-white/4 hover:bg-white/8 active:scale-[0.99] transition-all px-4 py-3"
+              >
+                <ChevronRight
+                  size={14}
+                  className={`text-zinc-500 transition-transform shrink-0 ${expanded.has(node.key) ? "rotate-90" : ""}`}
+                />
+                <span className="flex-1 text-sm font-medium truncate text-left">{node.label}</span>
+                <DeckCounts node={node} />
+              </button>
+              {expanded.has(node.key) && (
+                <div className="mt-1.5 ml-4 border-l border-white/6 pl-3">
+                  <DeckTreeView nodes={node.children} depth={depth + 1} />
+                </div>
+              )}
+            </>
+          ) : (
+            <Link
+              href={`/review?deck=${encodeURIComponent(node.key)}`}
+              className="flex items-center gap-2.5 rounded-xl border border-white/8 bg-white/4 hover:bg-white/8 active:scale-[0.99] transition-all px-4 py-3"
+            >
+              <div className="w-3.5 shrink-0" />
+              <span className="flex-1 text-sm font-medium truncate">{node.label}</span>
+              <DeckCounts node={node} />
+            </Link>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Home() {
   const [counts, setCounts] = useState<DueCounts | null>(null);
   const [decks, setDecks] = useState<DeckRow[]>([]);
@@ -42,12 +148,10 @@ export default function Home() {
     setNotifStatus(ok ? "ok" : "denied");
   }
 
-  // Filtrer les decks actifs
   const active = getActiveDecks();
-  const visibleDecks = active
-    ? decks.filter((d) => active.includes(d.name))
-    : decks;
+  const visibleDecks = active ? decks.filter((d) => active.includes(d.name)) : decks;
   const dueDecks = visibleDecks.filter((d) => d.total > 0);
+  const tree = buildDeckTree(dueDecks);
 
   return (
     <main className="min-h-screen bg-[#09090b] text-white">
@@ -110,7 +214,7 @@ export default function Home() {
           )}
         </MacWindow>
 
-        {/* Liste des decks */}
+        {/* Arbre des decks */}
         <MacWindow title="decks">
           {loading ? (
             <div className="space-y-2">
@@ -118,45 +222,16 @@ export default function Home() {
                 <div key={i} className="h-12 bg-white/4 rounded-xl animate-pulse" />
               ))}
             </div>
-          ) : dueDecks.length === 0 ? (
+          ) : tree.length === 0 ? (
             <p className="text-zinc-500 text-sm">Aucun deck avec des cartes dues.</p>
           ) : (
-            <div className="space-y-2">
-              {dueDecks.map((deck) => {
-                const short = deck.name.split("::").pop() ?? deck.name;
-                const parent = deck.name.includes("::") ? deck.name.split("::").slice(0, -1).join("::") : null;
-                return (
-                  <Link
-                    key={deck.name}
-                    href={`/review?deck=${encodeURIComponent(deck.name)}`}
-                    className="flex items-center gap-3 rounded-xl border border-white/8 bg-white/4 hover:bg-white/8 active:scale-[0.99] transition-all px-4 py-3"
-                  >
-                    <div className="flex-1 min-w-0">
-                      {parent && (
-                        <p className="text-[10px] text-zinc-600 truncate">{parent}</p>
-                      )}
-                      <p className="text-sm font-medium truncate">{short}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {deck.new > 0 && (
-                        <span className="text-[11px] font-semibold text-blue-400 bg-blue-500/10 rounded-md px-1.5 py-0.5">{deck.new}</span>
-                      )}
-                      {deck.learning > 0 && (
-                        <span className="text-[11px] font-semibold text-amber-400 bg-amber-500/10 rounded-md px-1.5 py-0.5">{deck.learning}</span>
-                      )}
-                      {deck.review > 0 && (
-                        <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 rounded-md px-1.5 py-0.5">{deck.review}</span>
-                      )}
-                      <ChevronRight size={14} className="text-zinc-600 ml-1" />
-                    </div>
-                  </Link>
-                );
-              })}
+            <>
+              <DeckTreeView nodes={tree} />
               <Link href="/decks"
-                className="block text-center text-xs text-zinc-500 hover:text-zinc-300 transition-colors pt-1">
+                className="block text-center text-xs text-zinc-500 hover:text-zinc-300 transition-colors pt-2">
                 Gérer les decks →
               </Link>
-            </div>
+            </>
           )}
         </MacWindow>
 
