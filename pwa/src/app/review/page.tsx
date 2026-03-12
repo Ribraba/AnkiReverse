@@ -14,15 +14,21 @@ function renderQuestion(template: string, fields: Record<string, string>): strin
     .trim();
 }
 
-function renderAnswer(template: string, fields: Record<string, string>): string {
-  // Ne garder que ce qui est APRÈS <hr id=answer> — évite le double énoncé
-  const hrMatch = template.match(/<hr\s+id=["']?answer["']?\s*\/?>/i);
-  const backPart = hrMatch
-    ? template.slice((hrMatch.index ?? 0) + hrMatch[0].length)
-    : template.replace(/\{\{FrontSide\}\}/gi, "");
-
-  return backPart
+// Rendu complet côté réponse : recto + séparateur + verso dans une seule boîte,
+// comme Anki Desktop. {{FrontSide}} est remplacé par le HTML du recto réel.
+function renderFullAnswer(
+  qTemplate: string,
+  aTemplate: string,
+  fields: Record<string, string>
+): string {
+  const front = renderQuestion(qTemplate, fields);
+  return aTemplate
+    .replace(/\{\{FrontSide\}\}/gi, front)
     .replace(/\{\{([^}]+)\}\}/g, (_, key) => fields[key.trim()] ?? "")
+    .replace(
+      /<hr\s+id=["']?answer["']?\s*\/?>/gi,
+      '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:20px 0"/>'
+    )
     .trim();
 }
 
@@ -113,8 +119,8 @@ function ReviewContent() {
     </Screen>
   );
 
-  const question = renderQuestion(card.question_template, card.fields);
-  const answer   = renderAnswer(card.answer_template, card.fields);
+  const question   = renderQuestion(card.question_template, card.fields);
+  const fullAnswer = renderFullAnswer(card.question_template, card.answer_template, card.fields);
   const [t1, t2, t3, t4] = sm2Intervals(card.interval, card.factor);
   const deckShort = card.deck.split("::").pop() ?? card.deck;
 
@@ -143,20 +149,22 @@ function ReviewContent() {
       </div>
 
       {/* Zone de contenu scrollable */}
-      <div ref={contentRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+      <div ref={contentRef} className="flex-1 overflow-y-auto px-5 py-5">
         {card.css && <style dangerouslySetInnerHTML={{ __html: card.css }} />}
 
-        {/* Question */}
-        <div className="rounded-3xl border border-white/8 bg-white/4 px-7 py-9">
-          <div className="prose prose-invert prose-base max-w-none text-center w-full"
-            dangerouslySetInnerHTML={{ __html: question }} />
-        </div>
+        {/* Avant réponse : recto seul */}
+        {!showAnswer && (
+          <div className="rounded-3xl border border-white/8 bg-white/4 px-7 py-9">
+            <div className="prose prose-invert prose-base max-w-none text-center w-full"
+              dangerouslySetInnerHTML={{ __html: question }} />
+          </div>
+        )}
 
-        {/* Réponse — uniquement ce qui est après <hr id=answer> */}
-        {showAnswer && answer && (
+        {/* Après réponse : UNE seule boîte recto + séparateur + verso */}
+        {showAnswer && (
           <div className="rounded-3xl border border-violet-500/20 bg-violet-500/5 px-7 py-9 animate-fade-in">
             <div className="prose prose-invert prose-base max-w-none text-center w-full"
-              dangerouslySetInnerHTML={{ __html: answer }} />
+              dangerouslySetInnerHTML={{ __html: fullAnswer }} />
           </div>
         )}
       </div>

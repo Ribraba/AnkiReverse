@@ -7,17 +7,20 @@ import { getExtraCards, submitReview, type AnkiCard } from "@/lib/api";
 import { getActiveDecks } from "@/app/decks/page";
 import { typesetMath } from "@/lib/mathjax";
 
-function renderTemplate(template: string, fields: Record<string, string>): string {
-  return template.replace(/\{\{([^}]+)\}\}/g, (_, key) => fields[key.trim()] ?? "");
+function renderQuestion(template: string, fields: Record<string, string>): string {
+  return template.replace(/\{\{([^}]+)\}\}/g, (_, key) => fields[key.trim()] ?? "").trim();
 }
 
-function renderAnswer(template: string, fields: Record<string, string>): string {
-  let html = template.replace(/\{\{([^}]+)\}\}/g, (_, key) => {
-    if (key.trim() === "FrontSide") return "";
-    return fields[key.trim()] ?? "";
-  });
-  html = html.replace(/<hr\s+id=["']?answer["']?\s*\/?>/gi, "");
-  return html.trim();
+function renderFullAnswer(qTemplate: string, aTemplate: string, fields: Record<string, string>): string {
+  const front = renderQuestion(qTemplate, fields);
+  return aTemplate
+    .replace(/\{\{FrontSide\}\}/gi, front)
+    .replace(/\{\{([^}]+)\}\}/g, (_, key) => fields[key.trim()] ?? "")
+    .replace(
+      /<hr\s+id=["']?answer["']?\s*\/?>/gi,
+      '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:20px 0"/>'
+    )
+    .trim();
 }
 
 function daysUntil(due: number): string {
@@ -86,8 +89,8 @@ export default function ExtraReviewPage() {
     </Screen>
   );
 
-  const question = renderTemplate(card.question_template, card.fields);
-  const answer = renderAnswer(card.answer_template, card.fields);
+  const question   = renderQuestion(card.question_template, card.fields);
+  const fullAnswer = renderFullAnswer(card.question_template, card.answer_template, card.fields);
 
   return (
     <main className="min-h-screen bg-[#09090b] text-white flex flex-col">
@@ -113,17 +116,20 @@ export default function ExtraReviewPage() {
       </div>
 
       {/* Carte */}
-      <div ref={contentRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
-        <div className="rounded-2xl border border-white/8 bg-white/4 p-5 flex-1 flex items-center justify-center min-h-[140px]">
-          {card.css && <style dangerouslySetInnerHTML={{ __html: card.css }} />}
-          <div className="prose prose-invert prose-sm max-w-none text-center w-full"
-            dangerouslySetInnerHTML={{ __html: question }} />
-        </div>
+      <div ref={contentRef} className="flex-1 overflow-y-auto px-5 py-5">
+        {card.css && <style dangerouslySetInnerHTML={{ __html: card.css }} />}
+
+        {!showAnswer && (
+          <div className="rounded-3xl border border-white/8 bg-white/4 px-7 py-9">
+            <div className="prose prose-invert prose-base max-w-none text-center w-full"
+              dangerouslySetInnerHTML={{ __html: question }} />
+          </div>
+        )}
 
         {showAnswer && (
-          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5 flex-1 flex items-center justify-center min-h-[120px] animate-fade-in">
-            <div className="prose prose-invert prose-sm max-w-none text-center w-full"
-              dangerouslySetInnerHTML={{ __html: answer }} />
+          <div className="rounded-3xl border border-amber-500/20 bg-amber-500/5 px-7 py-9 animate-fade-in">
+            <div className="prose prose-invert prose-base max-w-none text-center w-full"
+              dangerouslySetInnerHTML={{ __html: fullAnswer }} />
           </div>
         )}
       </div>
