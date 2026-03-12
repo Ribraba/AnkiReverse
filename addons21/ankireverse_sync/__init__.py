@@ -234,12 +234,26 @@ def turso_sync_task(cards: list, env: dict, progress_cb=None):
             {"sql": "UPDATE review_log SET synced_to_anki=1 WHERE card_id=? AND reviewed_at=?",
              "args": [arg(cid), arg(rat)]} for cid, _, rat in reviews])
 
-    # 4. Sauvegarder today_offset dans Turso (pour la PWA)
+    # 4. Sauvegarder today_offset et limites new/jour dans Turso
     today = get_today_offset()
-    turso_query(base, token, [{
-        "sql": "INSERT OR REPLACE INTO sync_meta(key, value) VALUES('today_offset', ?)",
-        "args": [arg(today)]
-    }])
+    meta_stmts = [{"sql": "INSERT OR REPLACE INTO sync_meta(key, value) VALUES('today_offset', ?)",
+                   "args": [arg(today)]}]
+
+    # Lire les limites de nouvelles cartes par deck depuis les options Anki
+    try:
+        dconf_map = {str(dc["id"]): dc for dc in mw.col.decks.all_config()}
+        for deck in mw.col.decks.all():
+            conf_id = str(deck.get("conf", 1))
+            dc = dconf_map.get(conf_id, {})
+            new_per_day = dc.get("new", {}).get("perDay", 20)
+            meta_stmts.append({
+                "sql": "INSERT OR REPLACE INTO sync_meta(key, value) VALUES(?, ?)",
+                "args": [arg(f"new_per_day::{deck['name']}"), arg(new_per_day)]
+            })
+    except Exception as e:
+        log(f"turso_sync_task: impossible de lire les limites new/jour: {e}")
+
+    turso_query(base, token, meta_stmts)
 
     log(f"turso_sync_task: terminé — {sent} cartes, {len(reviews)} reviews")
     return reviews, sent
