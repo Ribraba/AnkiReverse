@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, PartyPopper, CheckCircle } from "lucide-react";
 import { getDueCards, submitReview, type AnkiCard } from "@/lib/api";
@@ -43,6 +44,13 @@ function sm2Intervals(ivl: number, factor: number): [string, string, string, str
 }
 
 export default function ReviewPage() {
+  return <Suspense fallback={<Screen><p className="text-zinc-400 text-sm">Chargement...</p></Screen>}><ReviewContent /></Suspense>;
+}
+
+function ReviewContent() {
+  const searchParams = useSearchParams();
+  const deckParam = searchParams.get("deck"); // un seul deck si cliqué depuis l'accueil
+
   const [cards, setCards] = useState<AnkiCard[]>([]);
   const [index, setIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -52,13 +60,18 @@ export default function ReviewPage() {
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const active = getActiveDecks();
-    const params = active ? `?decks=${encodeURIComponent(active.join(","))}` : "";
+    let params: string;
+    if (deckParam) {
+      params = `?decks=${encodeURIComponent(deckParam)}`;
+    } else {
+      const active = getActiveDecks();
+      params = active ? `?decks=${encodeURIComponent(active.join(","))}` : "";
+    }
     getDueCards(50, params)
       .then(setCards)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [deckParam]);
 
   // Re-render MathJax après chaque changement de carte ou affichage de la réponse
   useEffect(() => {
