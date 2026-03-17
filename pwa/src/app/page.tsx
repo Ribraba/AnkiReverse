@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import Image from "next/image";
 import { Bell, BellOff, ArrowRight, ChevronRight, Zap } from "lucide-react";
@@ -123,6 +124,7 @@ function DeckTreeView({ nodes, depth = 0 }: { nodes: DeckNode[]; depth?: number 
 }
 
 export default function Home() {
+  const { data: session } = useSession();
   const [counts, setCounts] = useState<DueCounts | null>(null);
   const [decks, setDecks] = useState<DeckRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -172,7 +174,7 @@ export default function Home() {
 
         {/* Hero */}
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Bonjour Ibrahim</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Bonjour {session?.user?.name?.split(" ")[0] ?? "Visiteur"}</h1>
           <p className="text-zinc-400 mt-1 text-sm">
             {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
           </p>
