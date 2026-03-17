@@ -2,8 +2,26 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { turso } from "@/lib/turso";
+import { cookies } from "next/headers";
+import { DEMO_CARDS } from "@/lib/demo-data";
 
 export async function GET(req: Request) {
+  const cookieStore = await cookies();
+  if (cookieStore.get("ankireverse_demo")?.value === "1") {
+    const { searchParams } = new URL(req.url);
+    const limit = Math.min(Number(searchParams.get("limit") ?? 50), 200);
+    const decksParam = searchParams.get("decks");
+    const deckFilter = decksParam ? decksParam.split(",").map((d) => d.trim()).filter(Boolean) : null;
+    const aheadDays = Number(searchParams.get("ahead") ?? 0);
+
+    let cards = DEMO_CARDS.filter((c) => c.queue !== 0 || aheadDays === 0);
+    if (aheadDays > 0) cards = DEMO_CARDS.filter((c) => c.queue === 2);
+    if (deckFilter && deckFilter.length > 0) {
+      cards = cards.filter((c) => deckFilter.some((d) => c.deck === d || c.deck.startsWith(d + "::")));
+    }
+    return NextResponse.json(cards.slice(0, limit));
+  }
+
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

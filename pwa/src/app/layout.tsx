@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { Providers } from "@/components/providers";
+import { DemoBanner } from "@/components/DemoBanner";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="bg-slate-950 text-white min-h-screen">
         <Providers>{children}</Providers>
+        <DemoBanner />
         {/* MathJax — rendu \[...\] et \(...\) dans les cartes Anki */}
         <Script id="mathjax-config" strategy="beforeInteractive">{`
           window.MathJax = {

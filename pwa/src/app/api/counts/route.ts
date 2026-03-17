@@ -2,8 +2,15 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { turso } from "@/lib/turso";
+import { cookies } from "next/headers";
+import { DEMO_COUNTS } from "@/lib/demo-data";
 
 export async function GET(req: Request) {
+  const cookieStore = await cookies();
+  if (cookieStore.get("ankireverse_demo")?.value === "1") {
+    return NextResponse.json(DEMO_COUNTS);
+  }
+
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
