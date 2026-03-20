@@ -8,12 +8,19 @@ Conçu pour remplacer AnkiMobile sans payer 30€ — fonctionne dans Safari com
 ## Architecture
 
 ```mermaid
+%%{init: {'theme': 'neutral'}}%%
 flowchart TD
-    A["🖥️ Anki Desktop (Mac)\ncollection.anki2"] -->|"lecture fichier SQLite local"| B
-    B["⚙️ Add-on AnkiReverse Sync\nauverture / fermeture d'Anki\nou scripts/sync_anki_turso.py"] -->|"pousse les cartes dues"| C
-    C[("☁️ Turso\ncloud SQLite — tier gratuit")] -->|"API libSQL"| D
-    D["🌐 Next.js PWA\ndéployée sur Vercel"] -->|"installable via Safari"| E
-    E["📱 iPhone / Safari\nécran d'accueil"] -->|"soumet note 1–4"| C
+    A["Anki Desktop (Mac)\ncollection.anki2"]
+    B["Add-on AnkiReverse Sync\n(ouverture / fermeture d'Anki)\nou sync_anki_turso.py"]
+    C[("Turso\ncloud SQLite")]
+    D["Next.js PWA\nVercel"]
+    E["iPhone / Safari"]
+
+    A -->|"lit le SQLite local"| B
+    B -->|"pousse les cartes dues"| C
+    C -->|"API libSQL"| D
+    D -->|"installable via Safari"| E
+    E -->|"soumet note 1–4"| C
     C -->|"importe les révisions"| B
 ```
 
@@ -54,6 +61,7 @@ flowchart TD
 ## Structure du projet
 
 ```mermaid
+%%{init: {'theme': 'neutral'}}%%
 mindmap
   root((AnkiReverse))
     addons21
@@ -239,11 +247,12 @@ Le script `sync_anki_turso.py` fonctionne en deux passes :
 2. **Anki Desktop → Turso** : lit les cartes dues dans le SQLite local et les pousse dans la table `cards` de Turso
 
 ```mermaid
+%%{init: {'theme': 'neutral'}}%%
 sequenceDiagram
-    participant iPhone as 📱 iPhone (PWA)
-    participant Turso as ☁️ Turso
-    participant Script as ⚙️ Add-on / Script
-    participant Anki as 🖥️ Anki Desktop
+    participant iPhone as iPhone (PWA)
+    participant Turso as Turso
+    participant Script as Add-on / Script
+    participant Anki as Anki Desktop
 
     Note over iPhone,Turso: Révision sur iPhone
     iPhone->>Turso: POST note 1–4 → review_log
