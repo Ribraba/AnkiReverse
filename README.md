@@ -7,21 +7,14 @@ Conçu pour remplacer AnkiMobile sans payer 30€ — fonctionne dans Safari com
 
 ## Architecture
 
-```
-Anki Desktop (Mac)
-      │
-      ▼
-Add-on AnkiReverse Sync        ← s'exécute automatiquement à l'ouverture/fermeture d'Anki
-(ou scripts/sync_anki_turso.py en ligne de commande)
-      │
-      ▼
-   Turso (cloud SQLite)         ← base de données en ligne, tier gratuit
-      │
-      ▼
-  Next.js PWA (Vercel)          ← interface de révision
-      │
-      ▼
-   iPhone / Safari              ← installable sur l'écran d'accueil
+```mermaid
+flowchart TD
+    A["🖥️ Anki Desktop (Mac)\ncollection.anki2"] -->|"lecture fichier SQLite local"| B
+    B["⚙️ Add-on AnkiReverse Sync\nauverture / fermeture d'Anki\nou scripts/sync_anki_turso.py"] -->|"pousse les cartes dues"| C
+    C[("☁️ Turso\ncloud SQLite — tier gratuit")] -->|"API libSQL"| D
+    D["🌐 Next.js PWA\ndéployée sur Vercel"] -->|"installable via Safari"| E
+    E["📱 iPhone / Safari\nécran d'accueil"] -->|"soumet note 1–4"| C
+    C -->|"importe les révisions"| B
 ```
 
 ### Comment ça marche ?
@@ -60,56 +53,49 @@ Add-on AnkiReverse Sync        ← s'exécute automatiquement à l'ouverture/fer
 
 ## Structure du projet
 
-```
-AnkiReverse/
-├── .env.example                      → Template des variables d'environnement (Mac)
-├── docker-compose.yml                → Ancien setup Docker (non utilisé en prod)
-│
-├── addons21/
-│   └── ankireverse_sync/
-│       ├── __init__.py               → Add-on Anki : sync automatique à l'ouverture/fermeture
-│       └── meta.json                 → Métadonnées de l'add-on
-│
-├── pwa/                              → Application Next.js (déployée sur Vercel)
-│   ├── public/
-│   │   ├── manifest.json             → Manifest PWA
-│   │   ├── icon-192.png              → Icône PWA (home screen iPhone)
-│   │   ├── icon-512.png              → Icône PWA (splash screen)
-│   │   ├── sw-push.js                → Service worker pour les notifications push
-│   │   └── fonts/                    → Police Neris (Thin, Light, SemiBold, Black)
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── page.tsx              → Dashboard (cartes du jour, stats)
-│   │   │   ├── review/page.tsx       → Interface de révision des cartes
-│   │   │   ├── decks/page.tsx        → Sélection des decks actifs
-│   │   │   ├── login/page.tsx        → Page de connexion GitHub OAuth
-│   │   │   ├── layout.tsx            → Layout global (font, metadata PWA)
-│   │   │   └── api/
-│   │   │       ├── counts/route.ts   → GET /api/counts — nb de cartes dues
-│   │   │       ├── cards/route.ts    → GET /api/cards — cartes à réviser
-│   │   │       ├── review/route.ts   → POST /api/review — soumettre une note
-│   │   │       ├── decks/route.ts    → GET /api/decks — liste des decks
-│   │   │       ├── push/             → Routes notifications push (subscribe/notify)
-│   │   │       └── auth/             → NextAuth (GitHub OAuth)
-│   │   ├── components/
-│   │   │   └── providers.tsx         → SessionProvider (NextAuth)
-│   │   ├── lib/
-│   │   │   ├── turso.ts              → Client Turso (libSQL cloud)
-│   │   │   ├── auth.ts               → Config NextAuth + restriction email
-│   │   │   ├── api.ts                → Fonctions fetch côté client
-│   │   │   └── push.ts               → Abonnement Web Push (VAPID)
-│   │   └── proxy.ts                  → Protection des routes (remplace middleware Next.js 16)
-│   └── .env.local.example            → Template des variables d'env pour la PWA
-│
-├── scripts/
-│   ├── sync_anki_turso.py            → Sync bidirectionnel Anki ↔ Turso (CLI)
-│   ├── init_turso.py                 → Création des tables Turso (une seule fois)
-│   └── generate_vapid.py             → Génère les clés VAPID pour les notifications
-│
-└── server/                           → Ancienne API FastAPI (non utilisée en prod)
-    ├── main.py
-    ├── api/anki_db.py
-    └── requirements.txt
+```mermaid
+mindmap
+  root((AnkiReverse))
+    addons21
+      ankireverse_sync
+        __init__.py
+          sync auto ouverture/fermeture
+        meta.json
+          métadonnées add-on
+    pwa
+      public
+        manifest.json
+        sw-push.js
+        fonts/
+      src/app
+        page.tsx : Dashboard
+        review/page.tsx
+        decks/page.tsx
+        login/page.tsx
+        layout.tsx
+        api/
+          counts GET
+          cards GET
+          review POST
+          decks GET
+          push subscribe/notify
+          auth NextAuth OAuth
+      src/lib
+        turso.ts : client Turso
+        auth.ts : NextAuth config
+        api.ts : fetch client
+        push.ts : VAPID
+      proxy.ts
+        protection des routes
+    scripts
+      sync_anki_turso.py
+        sync CLI bidirectionnel
+      init_turso.py
+        init tables
+      generate_vapid.py
+        clés VAPID
+    server
+      main.py non utilisé en prod
 ```
 
 ---
@@ -251,6 +237,28 @@ Le script `sync_anki_turso.py` fonctionne en deux passes :
 
 1. **Turso → Anki Desktop** : lit la table `review_log` (révisions faites sur iPhone), applique les résultats dans le SQLite local d'Anki avec SM-2 (mise à jour de `due`, `ivl`, `factor`, `reps`, `lapses`), puis marque les révisions comme appliquées
 2. **Anki Desktop → Turso** : lit les cartes dues dans le SQLite local et les pousse dans la table `cards` de Turso
+
+```mermaid
+sequenceDiagram
+    participant iPhone as 📱 iPhone (PWA)
+    participant Turso as ☁️ Turso
+    participant Script as ⚙️ Add-on / Script
+    participant Anki as 🖥️ Anki Desktop
+
+    Note over iPhone,Turso: Révision sur iPhone
+    iPhone->>Turso: POST note 1–4 → review_log
+
+    Note over Script,Anki: Démarrage d'Anki (passe 1 — Turso → Anki)
+    Script->>Turso: Lit review_log (révisions non appliquées)
+    Turso-->>Script: Liste des révisions iPhone
+    Script->>Anki: Applique SM-2 (due, ivl, factor, reps, lapses)
+    Script->>Turso: Marque révisions applied = true
+
+    Note over Script,Anki: Démarrage d'Anki (passe 2 — Anki → Turso)
+    Script->>Anki: Lit les cartes dues (collection.anki2)
+    Anki-->>Script: Liste des cartes dues
+    Script->>Turso: Pousse les cartes dans la table cards
+```
 
 ---
 
