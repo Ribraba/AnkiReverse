@@ -60,50 +60,56 @@ flowchart TD
 
 ## Structure du projet
 
-```mermaid
-%%{init: {'theme': 'neutral'}}%%
-mindmap
-  root((AnkiReverse))
-    addons21
-      ankireverse_sync
-        __init__.py
-          sync auto ouverture/fermeture
-        meta.json
-          métadonnées add-on
-    pwa
-      public
-        manifest.json
-        sw-push.js
-        fonts/
-      src/app
-        page.tsx : Dashboard
-        review/page.tsx
-        decks/page.tsx
-        login/page.tsx
-        layout.tsx
-        api/
-          counts GET
-          cards GET
-          review POST
-          decks GET
-          push subscribe/notify
-          auth NextAuth OAuth
-      src/lib
-        turso.ts : client Turso
-        auth.ts : NextAuth config
-        api.ts : fetch client
-        push.ts : VAPID
-      proxy.ts
-        protection des routes
-    scripts
-      sync_anki_turso.py
-        sync CLI bidirectionnel
-      init_turso.py
-        init tables
-      generate_vapid.py
-        clés VAPID
-    server
-      main.py non utilisé en prod
+```
+AnkiReverse/
+├── .env.example                      → Template des variables d'environnement (Mac)
+├── docker-compose.yml                → Ancien setup Docker (non utilisé en prod)
+│
+├── addons21/
+│   └── ankireverse_sync/
+│       ├── __init__.py               → Add-on Anki : sync automatique à l'ouverture/fermeture
+│       └── meta.json                 → Métadonnées de l'add-on
+│
+├── pwa/                              → Application Next.js (déployée sur Vercel)
+│   ├── public/
+│   │   ├── manifest.json             → Manifest PWA
+│   │   ├── icon-192.png              → Icône PWA (home screen iPhone)
+│   │   ├── icon-512.png              → Icône PWA (splash screen)
+│   │   ├── sw-push.js                → Service worker pour les notifications push
+│   │   └── fonts/                    → Police Neris (Thin, Light, SemiBold, Black)
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── page.tsx              → Dashboard (cartes du jour, stats)
+│   │   │   ├── review/page.tsx       → Interface de révision des cartes
+│   │   │   ├── decks/page.tsx        → Sélection des decks actifs
+│   │   │   ├── login/page.tsx        → Page de connexion GitHub OAuth
+│   │   │   ├── layout.tsx            → Layout global (font, metadata PWA)
+│   │   │   └── api/
+│   │   │       ├── counts/route.ts   → GET /api/counts — nb de cartes dues
+│   │   │       ├── cards/route.ts    → GET /api/cards — cartes à réviser
+│   │   │       ├── review/route.ts   → POST /api/review — soumettre une note
+│   │   │       ├── decks/route.ts    → GET /api/decks — liste des decks
+│   │   │       ├── push/             → Routes notifications push (subscribe/notify)
+│   │   │       └── auth/             → NextAuth (GitHub OAuth)
+│   │   ├── components/
+│   │   │   └── providers.tsx         → SessionProvider (NextAuth)
+│   │   ├── lib/
+│   │   │   ├── turso.ts              → Client Turso (libSQL cloud)
+│   │   │   ├── auth.ts               → Config NextAuth + restriction email
+│   │   │   ├── api.ts                → Fonctions fetch côté client
+│   │   │   └── push.ts               → Abonnement Web Push (VAPID)
+│   │   └── proxy.ts                  → Protection des routes (remplace middleware Next.js 16)
+│   └── .env.local.example            → Template des variables d'env pour la PWA
+│
+├── scripts/
+│   ├── sync_anki_turso.py            → Sync bidirectionnel Anki ↔ Turso (CLI)
+│   ├── init_turso.py                 → Création des tables Turso (une seule fois)
+│   └── generate_vapid.py             → Génère les clés VAPID pour les notifications
+│
+└── server/                           → Ancienne API FastAPI (non utilisée en prod)
+    ├── main.py
+    ├── api/anki_db.py
+    └── requirements.txt
 ```
 
 ---
