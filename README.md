@@ -20,7 +20,8 @@ flowchart TD
     B -->|"pousse les cartes dues"| C
     C -->|"API libSQL"| D
     D -->|"installable via Safari"| E
-    E -->|"soumet note 1–4"| C
+    E -->|"soumet note 1–4"| D
+    D -->|"écrit dans Turso"| C
     C -->|"importe les révisions"| B
 ```
 
